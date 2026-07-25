@@ -1,0 +1,52 @@
+services:
+  app:
+    build: .
+    # Bound to loopback on purpose. This endpoint spends your Claude subscription
+    # on every request it serves, and has no authentication of its own — moving
+    # this to 0.0.0.0 hands that to anyone on the network.
+    # 5173 is Vite's default and tends to be occupied by whatever dev server is
+    # running; 5180 keeps this out of that fight.
+    ports:
+      - '127.0.0.1:5180:3000'
+    volumes:
+      # SQLite database and uploaded photos.
+      - ./data:/app/data
+
+      # Claude Code credentials, so the Agent SDK authenticates as you rather
+      # than needing an API key.
+      #
+      # Read-write is required, not incidental: OAuth token refresh rewrites
+      # .credentials.json, and bind-mounting that single file breaks when the
+      # process replaces it via rename. Mounting the directory is the working
+      # arrangement — and it does mean the container can write to your whole
+      # Claude Code config, conversation history included.
+      #
+      # If that is more access than you want to grant, drop this service and run
+      # the app directly on the host with `npm run dev`. The SDK finds the same
+      # credentials natively and nothing else changes.
+      - ${HOME}/.claude:/home/node/.claude
+    environment:
+      - HOME=/home/node
+      # adapter-node cannot infer its own public URL, and SvelteKit's CSRF check
+      # rejects every form POST (photo uploads included) when the origin it
+      # derives doesn't match the browser's.
+      #
+      # Deriving it from headers rather than pinning one URL, so the app works
+      # both directly on 127.0.0.1:5180 and behind a reverse proxy on a hostname.
+      # A hardcoded ORIGIN can only ever satisfy one of them.
+      #
+      # A proxy that passes the original Host upstream and sets X-Forwarded-Proto
+      # resolves correctly; on the direct path X-Forwarded-Proto is absent and the
+      # protocol falls back to http.
+      - HOST_HEADER=host
+      - PROTOCOL_HEADER=x-forwarded-proto
+      # adapter-node defaults to 512K, which rejects a single phone photo — they
+      # run 3-12MB each. This is sized for a multi-photo upload of full-resolution
+      # originals; the server downscales to 1600px on arrival, so nothing this
+      # large is ever stored.
+      - BODY_SIZE_LIMIT=128M
+      # Set ANTHROPIC_API_KEY here to authenticate with an API key instead of
+      # the mounted credentials — required if this is ever exposed to anyone
+      # other than you. The code path is identical.
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    restart: unless-stopped
