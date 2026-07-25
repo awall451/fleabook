@@ -33,16 +33,18 @@
 	border-color: transparent;
 }
 
-/* Secondary buttons only — `.primary` keeps the blue fill from the base rule,
-   which this would otherwise outrank (0,2,1 beats button.primary's 0,1,1). */
+/* Facebook's buttons are just bolder. This deliberately sets no background:
+   the base `button` rule already resolves to this theme's --surface-2, and a
+   background here (0,2,1) would outrank every component's own button styling —
+   which is exactly how the photo overlays lost their black scrim. */
 :root[data-theme='facebook'] button:not(.primary) {
-	background: var(--surface-2);
 	font-weight: 600;
 }
 
 /* Facebook greys a disabled button out entirely rather than fading it — fading
-   blue-on-grey at 55% left the label unreadable. */
-:root[data-theme='facebook'] button:disabled {
+   blue-on-grey at 55% left the label unreadable. Scoped away from the photo
+   overlays, which sit on an image and do their own dimming. */
+:root[data-theme='facebook'] button:disabled:not(.tile *) {
 	opacity: 1;
 	background: var(--surface-2);
 	color: #bcc0c4;

@@ -725,6 +725,9 @@
 		padding: 0.05rem 0.45rem;
 	}
 
+	/* Overlay controls sit on an unknown photo, so they carry their own contrast:
+	   a near-opaque scrim plus a hairline ring that keeps the circle readable
+	   against a dark subject too. */
 	.remove {
 		position: absolute;
 		top: 4px;
@@ -734,8 +737,14 @@
 		padding: 0;
 		line-height: 1;
 		border-radius: 999px;
-		background: rgba(0, 0, 0, 0.65);
+		background: rgba(0, 0, 0, 0.72);
 		color: #fff;
+		border-color: transparent;
+		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+	}
+
+	.remove:hover:not(:disabled) {
+		background: var(--danger);
 		border-color: transparent;
 	}
 
@@ -746,9 +755,10 @@
 		font-size: 0.62rem;
 		padding: 0.05rem 0.4rem;
 		border-radius: 999px;
-		background: rgba(0, 0, 0, 0.6);
+		background: rgba(0, 0, 0, 0.72);
 		color: #fff;
 		border-color: transparent;
+		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
 		opacity: 0;
 		transition: opacity 0.12s;
 	}
@@ -772,14 +782,26 @@
 		padding: 0;
 		line-height: 1;
 		border-radius: 999px;
-		background: rgba(0, 0, 0, 0.6);
+		background: rgba(0, 0, 0, 0.72);
 		color: #fff;
 		border-color: transparent;
 		font-size: 0.8rem;
+		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
 	}
 
-	.reorder button:disabled {
-		opacity: 0.25;
+	.reorder button:hover:not(:disabled) {
+		background: rgba(0, 0, 0, 0.88);
+		border-color: transparent;
+	}
+
+	/* An unavailable arrow stays legible — at 0.25 opacity it read as a smudge
+	   rather than as a disabled control. `.tile` prefix outranks the theme-level
+	   disabled rules in app.css. */
+	.tile .reorder button:disabled {
+		opacity: 1;
+		background: rgba(0, 0, 0, 0.4);
+		color: rgba(255, 255, 255, 0.55);
+		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
 	}
 
 	.progress {
