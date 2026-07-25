@@ -9,6 +9,22 @@ selling-streak heatmap.
 
 Local-only, runs in Docker, authenticates with your own Claude subscription.
 
+## Screenshots
+
+**The listing workspace** — drop in photos, get every Facebook field with a copy button, plus
+price research that shows its comparables and reasoning:
+
+![Listing detail](docs/screenshots/listing.png)
+
+**Dashboard** — total earned, monthly trend, listings by status, and a GitHub-style
+selling-streak heatmap (shown with sample data):
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+**Your drafts at a glance:**
+
+![Listings grid](docs/screenshots/grid.png)
+
 ---
 
 ## Why it works this way

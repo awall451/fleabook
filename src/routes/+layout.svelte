@@ -11,7 +11,7 @@
 
 <header>
 	<div class="inner">
-		<a class="brand" href="/">Marketplace Drafts</a>
+		<a class="brand" href="/">Fleabook</a>
 		<nav>
 			<a class="link" href="/dashboard">Dashboard</a>
 			<a class="link" href="/settings">Settings</a>
