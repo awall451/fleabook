@@ -328,7 +328,7 @@
 <div class="head">
 	<a href="/" class="back small">← All listings</a>
 	<div class="head-right small">
-		<span class="status">{data.listing.status}</span>
+		<span class="status status-{data.listing.status}">{data.listing.status}</span>
 		<span class="muted">
 			{#if saveState === 'saving'}Saving…{:else if saveState === 'saved'}Saved{:else if saveState === 'error'}Save failed{/if}
 		</span>
@@ -988,14 +988,19 @@
 		gap: 1.1rem;
 	}
 
+	/* Subgrid so the label rows share one height across the row: only some of
+	   these fields carry a Copy button, and without it their label row is
+	   shorter and the input below it rides up. */
 	.row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 1rem;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+		gap: 0.3rem 1rem;
 	}
 
 	.row .field {
-		flex: 1 1 160px;
+		display: grid;
+		grid-template-rows: subgrid;
+		grid-row: span 2;
 	}
 
 	.field {

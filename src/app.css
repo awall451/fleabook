@@ -1,34 +1,133 @@
-:root {
-	--bg: #ffffff;
-	--surface: #f6f7f9;
-	--surface-2: #eceff3;
-	--border: #d8dde4;
-	--text: #161a1f;
-	--muted: #626b76;
-	--accent: #2f6feb;
-	--accent-text: #ffffff;
-	--ok: #1a7f4b;
-	--warn: #9a6400;
-	--danger: #b3261e;
-	--radius: 8px;
+/* Themes. The id is set on <html data-theme> by the inline script in app.html;
+   see $lib/theme.ts. The bare :root block is the Facebook theme, so the page
+   still looks right if that script never runs. */
 
-	color-scheme: light dark;
+:root,
+:root[data-theme='facebook'] {
+	--bg: #f0f2f5;
+	--surface: #ffffff;
+	--surface-2: #e4e6eb;
+	--border: #ced0d4;
+	--text: #080809;
+	--muted: #65676b;
+	--accent: #1877f2;
+	--accent-text: #ffffff;
+	--ok: #31a24c;
+	--warn: #b26a00;
+	--danger: #e41e3f;
+	--radius: 8px;
+	--heat-1: #b7d5f8;
+	--heat-2: #7fb3f2;
+	--heat-3: #3d87e8;
+	--heat-4: #1552a8;
+
+	color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--bg: #14171c;
-		--surface: #1b1f26;
-		--surface-2: #232830;
-		--border: #333a45;
-		--text: #e7eaee;
-		--muted: #98a2b0;
-		--accent: #6ea1ff;
-		--accent-text: #10131a;
-		--ok: #5cc98e;
-		--warn: #e0aa4a;
-		--danger: #f08a82;
-	}
+/* Facebook puts content on white cards floating over a grey page; the rest of
+   the themes tint the surface instead. Only this theme needs the inversion. */
+:root[data-theme='facebook'] input,
+:root[data-theme='facebook'] select,
+:root[data-theme='facebook'] textarea {
+	background: var(--surface-2);
+	border-color: transparent;
+}
+
+/* Secondary buttons only — `.primary` keeps the blue fill from the base rule,
+   which this would otherwise outrank (0,2,1 beats button.primary's 0,1,1). */
+:root[data-theme='facebook'] button:not(.primary) {
+	background: var(--surface-2);
+	font-weight: 600;
+}
+
+/* Facebook greys a disabled button out entirely rather than fading it — fading
+   blue-on-grey at 55% left the label unreadable. */
+:root[data-theme='facebook'] button:disabled {
+	opacity: 1;
+	background: var(--surface-2);
+	color: #bcc0c4;
+	border-color: transparent;
+}
+
+:root[data-theme='midnight'] {
+	--bg: #14171c;
+	--surface: #1b1f26;
+	--surface-2: #232830;
+	--border: #333a45;
+	--text: #e7eaee;
+	--muted: #98a2b0;
+	--accent: #6ea1ff;
+	--accent-text: #10131a;
+	--ok: #5cc98e;
+	--warn: #e0aa4a;
+	--danger: #f08a82;
+	--radius: 8px;
+	--heat-1: #0e4429;
+	--heat-2: #006d32;
+	--heat-3: #26a641;
+	--heat-4: #39d353;
+
+	color-scheme: dark;
+}
+
+:root[data-theme='paper'] {
+	--bg: #fbfaf6;
+	--surface: #ffffff;
+	--surface-2: #f1eee5;
+	--border: #ddd7c8;
+	--text: #1d1b16;
+	--muted: #6d675a;
+	--accent: #9a3412;
+	--accent-text: #fffaf5;
+	--ok: #2f6f42;
+	--warn: #8a5a00;
+	--danger: #a52020;
+	--radius: 4px;
+	--heat-1: #f0d8a8;
+	--heat-2: #dda94f;
+	--heat-3: #b8712a;
+	--heat-4: #7c4211;
+
+	color-scheme: light;
+}
+
+/* Windows 98, stock scheme: #c0c0c0 button face, teal desktop, navy→#1084d0
+   title bars. Everything below this palette is chrome, and lives in the big
+   win98 section at the bottom of this file. */
+:root[data-theme='win98'] {
+	--bg: #008080;
+	--surface: #c0c0c0;
+	--surface-2: #d4d0c8;
+	--border: #000000;
+	--text: #000000;
+	--muted: #3f3f3f;
+	--accent: #000080;
+	--accent-text: #ffffff;
+	--ok: #006400;
+	--warn: #7a4a00;
+	--danger: #900000;
+	--radius: 0px;
+	--heat-1: #b8c4dc;
+	--heat-2: #7f95c4;
+	--heat-3: #3f5c9e;
+	--heat-4: #000080;
+
+	/* 3D edges. Two bevel rings: outer white/black, inner light/shadow — the
+	   Win9x recipe, done with insets so no extra markup is needed. */
+	--w98-light: #ffffff;
+	--w98-hilite: #dfdfdf;
+	--w98-shadow: #808080;
+	--w98-dark: #000000;
+	--w98-out:
+		inset -1px -1px 0 var(--w98-dark), inset 1px 1px 0 var(--w98-light),
+		inset -2px -2px 0 var(--w98-shadow), inset 2px 2px 0 var(--w98-hilite);
+	--w98-in:
+		inset 1px 1px 0 var(--w98-dark), inset -1px -1px 0 var(--w98-light),
+		inset 2px 2px 0 var(--w98-shadow), inset -2px -2px 0 var(--w98-hilite);
+	--w98-title: linear-gradient(90deg, #000080 0%, #1084d0 100%);
+	--w98-title-inactive: linear-gradient(90deg, #808080 0%, #b5b5b5 100%);
+
+	color-scheme: light;
 }
 
 * {
@@ -123,4 +222,346 @@ button.primary {
 
 .small {
 	font-size: 0.82rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Status pills.
+
+   One hue per pipeline stage, so a grid of cards is scannable at a glance
+   rather than three shades of "not green". The tint is mixed against the
+   theme's own surface, so a single set of hues works on light and dark alike.
+   Selectors are `:root .status.status-x` (0,2,1) to outrank the scoped `.status`
+   rules in the pages that render these.
+   --------------------------------------------------------------------------- */
+
+:root {
+	--st-new: #64748b; /* untouched */
+	--st-identifying: #2563eb; /* working */
+	--st-identified: #7c3aed; /* knows what it is */
+	--st-pricing: #0e7490; /* working */
+	--st-draft: #b45309; /* needs you */
+	--st-posted: #15803d; /* live */
+	--st-sold: #15803d; /* done — set apart by a solid fill, not by hue */
+	--st-archived: #6b7280; /* out of the way */
+}
+
+:root[data-theme='midnight'] {
+	--st-new: #94a3b8;
+	--st-identifying: #7ea6ff;
+	--st-identified: #b794f6;
+	--st-pricing: #4fc3d9;
+	--st-draft: #e0aa4a;
+	--st-posted: #5cc98e;
+	--st-sold: #5cc98e;
+	--st-archived: #8b95a3;
+}
+
+:root .status.status-new {
+	--st: var(--st-new);
+}
+:root .status.status-identifying {
+	--st: var(--st-identifying);
+}
+:root .status.status-identified {
+	--st: var(--st-identified);
+}
+:root .status.status-pricing {
+	--st: var(--st-pricing);
+}
+:root .status.status-draft {
+	--st: var(--st-draft);
+}
+:root .status.status-posted {
+	--st: var(--st-posted);
+}
+:root .status.status-sold {
+	--st: var(--st-sold);
+}
+:root .status.status-archived {
+	--st: var(--st-archived);
+}
+
+/* Attribute selector keeps this at the same weight as the rules above without
+   repeating the paint eight times. */
+:root .status[class*='status-'] {
+	color: var(--st);
+	background: color-mix(in srgb, var(--st) 12%, var(--surface));
+	border-color: color-mix(in srgb, var(--st) 38%, transparent);
+	font-weight: 600;
+}
+
+/* Sold is the one terminal state worth spotting from across the grid. */
+:root .status.status-sold {
+	color: #ffffff;
+	background: var(--st-sold);
+	border-color: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   Windows 98 chrome.
+
+   Every rule is prefixed with :root[data-theme='win98'], which also buys the
+   specificity needed to override Svelte's scoped component styles — a scoped
+   `.card` is `.card.svelte-hash` (0,2,0) and this is (0,2,1). Nothing here
+   changes markup or behaviour; the app works identically in every theme.
+   --------------------------------------------------------------------------- */
+
+:root[data-theme='win98'] body {
+	font:
+		13px/1.45 Tahoma,
+		'MS Sans Serif',
+		Verdana,
+		Geneva,
+		sans-serif;
+	/* Flat teal desktop, as it shipped. */
+	background-image: none;
+}
+
+:root[data-theme='win98'] ::selection {
+	background: #000080;
+	color: #ffffff;
+}
+
+:root[data-theme='win98'] a {
+	color: #000080;
+}
+
+/* --- Title bar (the site header) ---------------------------------------- */
+
+:root[data-theme='win98'] header {
+	max-width: 1180px;
+	margin: 0.75rem auto 0;
+	padding: 3px 3px 0;
+	background: var(--surface);
+	border-bottom: none;
+	box-shadow: var(--w98-out);
+}
+
+:root[data-theme='win98'] header .inner {
+	max-width: none;
+	margin: 0;
+	padding: 2px 2px 2px 4px;
+	background: var(--w98-title);
+	gap: 0.75rem;
+}
+
+:root[data-theme='win98'] header .wordmark,
+:root[data-theme='win98'] header .link {
+	color: #ffffff;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.35);
+	font-family: Tahoma, 'MS Sans Serif', sans-serif;
+	letter-spacing: 0;
+}
+
+:root[data-theme='win98'] header .link:hover {
+	color: #ffffff;
+	text-decoration: underline;
+}
+
+:root[data-theme='win98'] header .wordmark {
+	font-size: 1.05rem;
+	font-weight: 700;
+}
+
+:root[data-theme='win98'] header .new {
+	background: var(--surface);
+	color: var(--text);
+	box-shadow: var(--w98-out);
+	border-radius: 0;
+	padding: 0.15rem 0.7rem;
+	text-shadow: none;
+	font-size: 0.85rem;
+}
+
+:root[data-theme='win98'] header .new:active {
+	box-shadow: var(--w98-in);
+}
+
+:root[data-theme='win98'] .w98-controls {
+	display: flex;
+	gap: 2px;
+	margin-left: 0.25rem;
+}
+
+:root[data-theme='win98'] .w98-controls span {
+	width: 18px;
+	height: 16px;
+	display: grid;
+	place-items: center;
+	font-size: 10px;
+	line-height: 1;
+	color: #000;
+	background: var(--surface);
+	box-shadow: var(--w98-out);
+}
+
+/* --- Window body (the page) --------------------------------------------- */
+
+:root[data-theme='win98'] .page {
+	background: var(--surface);
+	box-shadow: var(--w98-out);
+	padding: 1rem 1rem 1.5rem;
+	margin-bottom: 2rem;
+}
+
+/* --- Controls ------------------------------------------------------------ */
+
+:root[data-theme='win98'] button,
+:root[data-theme='win98'] .chip,
+:root[data-theme='win98'] .ghost,
+:root[data-theme='win98'] .rerun,
+:root[data-theme='win98'] .remove {
+	background: var(--surface);
+	color: var(--text);
+	border: none;
+	border-radius: 0;
+	box-shadow: var(--w98-out);
+	padding: 0.25rem 0.75rem;
+	font-weight: 400;
+	text-decoration: none;
+}
+
+:root[data-theme='win98'] button:hover:not(:disabled),
+:root[data-theme='win98'] .chip:hover {
+	border: none;
+}
+
+/* Pressed buttons sink and shove their label a pixel down-right. */
+:root[data-theme='win98'] button:active:not(:disabled),
+:root[data-theme='win98'] .chip.active {
+	box-shadow: var(--w98-in);
+	padding: calc(0.25rem + 1px) calc(0.75rem - 1px) calc(0.25rem - 1px) calc(0.75rem + 1px);
+}
+
+:root[data-theme='win98'] button:focus-visible,
+:root[data-theme='win98'] .chip:focus-visible {
+	outline: 1px dotted #000;
+	outline-offset: -4px;
+}
+
+/* The default button in a 98 dialog wears an extra black ring. */
+:root[data-theme='win98'] button.primary {
+	background: var(--surface);
+	color: var(--text);
+	font-weight: 700;
+	outline: 1px solid #000;
+	outline-offset: 0;
+}
+
+:root[data-theme='win98'] button:disabled {
+	opacity: 1;
+	color: var(--w98-shadow);
+	text-shadow: 1px 1px 0 var(--w98-light);
+}
+
+:root[data-theme='win98'] input,
+:root[data-theme='win98'] select,
+:root[data-theme='win98'] textarea {
+	background: #ffffff;
+	border: none;
+	border-radius: 0;
+	box-shadow: var(--w98-in);
+	padding: 0.3rem 0.4rem;
+}
+
+:root[data-theme='win98'] input:focus,
+:root[data-theme='win98'] select:focus,
+:root[data-theme='win98'] textarea:focus {
+	outline: none;
+	box-shadow: var(--w98-in);
+}
+
+/* --- Panels, cards, tiles ------------------------------------------------ */
+
+:root[data-theme='win98'] .card,
+:root[data-theme='win98'] .panel,
+:root[data-theme='win98'] .tile,
+:root[data-theme='win98'] .hero,
+:root[data-theme='win98'] .preview,
+:root[data-theme='win98'] .theme,
+:root[data-theme='win98'] .strip,
+:root[data-theme='win98'] .price-panel,
+:root[data-theme='win98'] .sample-note {
+	background: var(--surface);
+	border: none;
+	border-radius: 0;
+	box-shadow: var(--w98-out);
+}
+
+:root[data-theme='win98'] .card:hover {
+	border: none;
+}
+
+/* Panel headers become title bars. `.head` is deliberately not in this list —
+   it is the breadcrumb row on the page background, not a panel header. */
+:root[data-theme='win98'] .panel-head,
+:root[data-theme='win98'] .price-head {
+	background: var(--w98-title);
+	color: #ffffff;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.35);
+	border-bottom: none;
+	padding: 0.2rem 0.4rem;
+}
+
+/* Everything in a title bar is white — the semantic colours (accent, ok, warn,
+   danger) are all unreadable against navy. */
+:root[data-theme='win98'] .panel-head *,
+:root[data-theme='win98'] .price-head * {
+	color: #ffffff;
+}
+
+/* …except the pill-shaped chips, which become grey beveled labels so the
+   confidence/basis wording stays legible. */
+:root[data-theme='win98'] .price-head .conf,
+:root[data-theme='win98'] .price-head .basis,
+:root[data-theme='win98'] .panel-head .conf {
+	background: var(--surface);
+	color: var(--text);
+	border: none;
+	border-radius: 0;
+	box-shadow: var(--w98-out);
+	text-shadow: none;
+	padding: 0.05rem 0.5rem;
+}
+
+/* Sunken client areas: image wells, the photo dropzone, progress logs. */
+:root[data-theme='win98'] .thumb,
+:root[data-theme='win98'] .dropzone,
+:root[data-theme='win98'] .progress,
+:root[data-theme='win98'] .rationale,
+:root[data-theme='win98'] .photos {
+	background: #ffffff;
+	border: none;
+	border-radius: 0;
+	box-shadow: var(--w98-in);
+}
+
+:root[data-theme='win98'] .status,
+:root[data-theme='win98'] .conf,
+:root[data-theme='win98'] .counter {
+	border-radius: 0;
+	border: 1px solid var(--w98-shadow);
+}
+
+/* --- Scrollbars ---------------------------------------------------------- */
+
+:root[data-theme='win98'] ::-webkit-scrollbar {
+	width: 16px;
+	height: 16px;
+}
+
+/* The 50% checker dither the 98 scrollbar trough is painted with. */
+:root[data-theme='win98'] ::-webkit-scrollbar-track {
+	background-color: #c0c0c0;
+	background-image: radial-gradient(#ffffff 1px, transparent 1px);
+	background-size: 2px 2px;
+}
+
+:root[data-theme='win98'] ::-webkit-scrollbar-thumb {
+	background: var(--surface);
+	box-shadow: var(--w98-out);
+}
+
+:root[data-theme='win98'] ::-webkit-scrollbar-corner {
+	background: var(--surface);
 }

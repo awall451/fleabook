@@ -174,15 +174,7 @@
 		padding: 0.05rem 0.5rem;
 	}
 
-	.status-draft,
-	.status-identified {
-		color: var(--warn);
-	}
-
-	.status-posted,
-	.status-sold {
-		color: var(--ok);
-	}
+	/* Per-status colours live in app.css so the listing page gets the same set. */
 
 	.status.working {
 		display: inline-flex;

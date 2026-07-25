@@ -107,31 +107,17 @@
 </div>
 
 <style>
-	/* Money-green sequential ramp. Single hue, light→dark by magnitude — the
-	   safe case for colorblind readers (magnitude reads by lightness). */
+	/* Sequential ramp, supplied per theme (--heat-1..4 in app.css). Single hue,
+	   light→dark by magnitude — the safe case for colorblind readers (magnitude
+	   reads by lightness). */
 	.heat {
 		--empty: var(--surface-2);
-		--g1: #9be9a8;
-		--g2: #40c463;
-		--g3: #2f9e4f;
-		--g4: #1c6b34;
+		--g1: var(--heat-1, #9be9a8);
+		--g2: var(--heat-2, #40c463);
+		--g3: var(--heat-3, #2f9e4f);
+		--g4: var(--heat-4, #1c6b34);
 		position: relative;
 		width: max-content;
-	}
-
-	@media (prefers-color-scheme: dark) {
-		:root:not([data-theme='light']) .heat {
-			--g1: #0e4429;
-			--g2: #006d32;
-			--g3: #26a641;
-			--g4: #39d353;
-		}
-	}
-	:root[data-theme='dark'] .heat {
-		--g1: #0e4429;
-		--g2: #006d32;
-		--g3: #26a641;
-		--g4: #39d353;
 	}
 
 	.scroll {

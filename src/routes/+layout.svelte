@@ -20,6 +20,11 @@
 			<a class="link" href="/settings">Settings</a>
 			<a class="new" href="/new">New listing</a>
 		</nav>
+		<!-- Decorative title-bar buttons. Hidden except in the Windows 98 theme,
+		     where the header is styled as a window title bar. -->
+		<span class="w98-controls" aria-hidden="true">
+			<span>_</span><span>□</span><span>✕</span>
+		</span>
 	</div>
 </header>
 
@@ -90,5 +95,9 @@
 		font-weight: 600;
 		padding: 0.4rem 0.85rem;
 		border-radius: var(--radius);
+	}
+
+	.w98-controls {
+		display: none;
 	}
 </style>
