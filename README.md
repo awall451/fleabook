@@ -1,10 +1,12 @@
 <p align="center">
-  <img src="docs/logo.png" alt="Fleabook" width="128" />
+  <img src="docs/logo.png" alt="Fleabook logo" width="132" />
 </p>
 
-# Fleabook
+<h1 align="center">Fleabook</h1>
 
-**Turn photos of your stuff into ready-to-paste Facebook Marketplace listings.**
+<p align="center">
+  <strong>Turn photos of your stuff into ready-to-paste Facebook Marketplace listings.</strong>
+</p>
 
 Drop in a few photos → Claude identifies the item, writes the listing, and researches what it
 actually sells for → the app lays out every Marketplace field with a copy button. You paste
@@ -179,3 +181,11 @@ for the model. Charts are hand-rolled inline SVG/CSS — no charting dependency.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+<p align="center">
+  <img src="docs/logo.png" alt="Fleabook" width="64" />
+  <br />
+  <sub>Made for flea-market flippers. Not affiliated with Facebook or Meta.</sub>
+</p>

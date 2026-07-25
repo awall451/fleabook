@@ -11,7 +11,10 @@
 
 <header>
 	<div class="inner">
-		<a class="brand" href="/">Fleabook</a>
+		<a class="brand" href="/">
+			<img class="mark" src={favicon} alt="" width="30" height="30" />
+			<span class="wordmark">fleabook</span>
+		</a>
 		<nav>
 			<a class="link" href="/dashboard">Dashboard</a>
 			<a class="link" href="/settings">Settings</a>
@@ -42,9 +45,27 @@
 	}
 
 	.brand {
-		font-weight: 650;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		text-decoration: none;
-		color: var(--text);
+	}
+
+	.mark {
+		display: block;
+		flex: none;
+	}
+
+	/* Lowercase blue wordmark, tuned to evoke the Facebook logotype — a rounded
+	   geometric stack where available, tight tracking. */
+	.wordmark {
+		font-family: 'Segoe UI', 'Helvetica Neue', 'Arial Rounded MT Bold', system-ui, sans-serif;
+		font-weight: 700;
+		font-size: 1.4rem;
+		letter-spacing: -0.03em;
+		line-height: 1;
+		text-transform: lowercase;
+		color: var(--accent);
 	}
 
 	nav {
