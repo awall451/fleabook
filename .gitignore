@@ -11,6 +11,10 @@ node_modules
 # Local data volume: sqlite db + uploaded photos
 /data
 
+# Windows packaging: assembled tree/zip, and the cached Node runtime download
+/dist-windows
+/.cache
+
 # OS
 .DS_Store
 Thumbs.db

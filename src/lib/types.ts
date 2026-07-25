@@ -32,6 +32,13 @@ export const LIMITS = {
 export const SETTING_MEETUP_NOTE = 'meetup_note';
 
 /**
+ * An Anthropic API key entered in Settings. Optional — it exists for people
+ * running the Windows build without a Claude subscription. See
+ * `src/lib/server/auth.ts` for how it is resolved against the environment.
+ */
+export const SETTING_API_KEY = 'anthropic_api_key';
+
+/**
  * The description that actually gets posted: the listing body plus the global
  * meetup note.
  *

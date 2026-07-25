@@ -1,5 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { ZodType } from 'zod';
+import { agentEnv } from '$lib/server/auth';
 
 export interface RunSpec {
 	/** The task. */
@@ -21,14 +22,19 @@ export interface RunSpec {
 }
 
 /**
- * Auth note: the SDK spawns the bundled Claude Code binary, which inherits this
- * process's environment. If ANTHROPIC_API_KEY is set it is used; otherwise the
- * binary falls back to the CLI's stored OAuth credentials (~/.claude). Switching
- * between the two is an env var, not a code change — which is what keeps the
- * "personal tool" and "shared deployment" cases on the same code path.
+ * Auth note: the SDK spawns the bundled Claude Code binary. If ANTHROPIC_API_KEY
+ * is set in the environment it hands over it is used; otherwise the binary falls
+ * back to the CLI's stored OAuth credentials (~/.claude). Switching between the
+ * two is an env var, not a code change — which is what keeps the "personal tool"
+ * and "shared deployment" cases on the same code path.
+ *
+ * The environment is passed explicitly rather than inherited so a key saved in
+ * Settings works the same way as one exported by Docker Compose. `agentEnv()`
+ * owns that precedence; nothing here branches on where the key came from.
  */
 function baseOptions(spec: RunSpec) {
 	return {
+		env: agentEnv(),
 		// Do not load ~/.claude/CLAUDE.md, project CLAUDE.md, or installed skills.
 		// Without this the agent inherits the machine's personality skills and
 		// writes listing copy in that voice. See scripts/smoke-agent.mjs.
@@ -52,7 +58,9 @@ function progressNote(name: string, input: unknown): string | null {
 
 	switch (name) {
 		case 'Read':
-			return file ? `looking at ${file.split('/').pop()}` : 'looking at a photo';
+			// Split on both separators — the agent reports Windows paths with
+			// backslashes, and a POSIX-only split would print the whole path.
+			return file ? `looking at ${file.split(/[/\\]/).pop()}` : 'looking at a photo';
 		case 'Glob':
 			return 'listing the photos';
 		case 'WebSearch':

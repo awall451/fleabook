@@ -1,6 +1,9 @@
 services:
   app:
     build: .
+    # Gantry derives the reverse-proxy hostname from the container name, so pin
+    # it: this is fleabook.localhost, not fleabook-app-1.localhost.
+    container_name: fleabook
     # Bound to loopback on purpose. This endpoint spends your Claude subscription
     # on every request it serves, and has no authentication of its own — moving
     # this to 0.0.0.0 hands that to anyone on the network.
@@ -24,7 +27,15 @@ services:
       # If that is more access than you want to grant, drop this service and run
       # the app directly on the host with `npm run dev`. The SDK finds the same
       # credentials natively and nothing else changes.
-      - ${HOME}/.claude:/home/node/.claude
+      #
+      # CLAUDE_DIR exists for Docker Desktop on Windows, where Compose has no
+      # $HOME to expand and this would otherwise resolve to `/.claude`. Set it in
+      # a .env file next to this one:
+      #
+      #   CLAUDE_DIR=C:\Users\you\.claude
+      #
+      # Unset — the case on Linux and macOS — it falls through to $HOME as before.
+      - ${CLAUDE_DIR:-${HOME}/.claude}:/home/node/.claude
     environment:
       - HOME=/home/node
       # adapter-node cannot infer its own public URL, and SvelteKit's CSRF check

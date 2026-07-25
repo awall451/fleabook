@@ -80,6 +80,31 @@ npm install
 npm run dev
 ```
 
+### Windows
+
+Windows runs the app natively — no WSL, no Docker. Download the release zip, unzip it, and
+double-click `Fleabook.exe`; it starts the same server on the same port and opens your browser.
+Listings and photos live in `%LOCALAPPDATA%\Fleabook\data`, not in the program folder, so
+replacing the app on upgrade never touches them.
+
+To build the package yourself, from Linux or Windows:
+
+```sh
+node scripts/build-windows.mjs
+```
+
+That produces `dist-windows/Fleabook/` and a zip beside it (~160 MB compressed; most of it is
+the Claude Code binary the Agent SDK ships). It needs Go on the build machine for the launcher
+and network access to fetch the pinned Node runtime. It does not touch the Docker build.
+
+Windows Docker Desktop also works if you prefer it — `docker compose up -d --build` is
+unchanged — but set `CLAUDE_DIR` first, because Compose expands `${HOME}` and Windows doesn't
+set it:
+
+```sh
+echo CLAUDE_DIR=%USERPROFILE%\.claude> .env
+```
+
 ## Authentication
 
 Fleabook uses the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk), which
@@ -97,6 +122,24 @@ Two things to understand about that mount:
   claude.ai login for their products. A tool you run on your own machine for your own listings
   isn't that — but if you ever share or expose it, switch to an API key: set `ANTHROPIC_API_KEY`
   (uncomment it in `docker-compose.yml`) and the same code path uses it.
+
+### If you don't have a subscription
+
+An Anthropic API key works instead, and can be entered in **Settings** rather than as an
+environment variable — there is no compose file to edit in the Windows build. Settings also
+explains where to get one. The key is stored in the app's own SQLite database in plain text,
+alongside the meetup note; that database is local and never leaves the machine, but it is worth
+knowing before you put a key in it.
+
+`src/lib/server/auth.ts` resolves the three sources in order, first hit wins:
+
+1. `ANTHROPIC_API_KEY` in the environment — the operator's override. It outranks the database
+   deliberately, so a deployment can't be repointed at someone else's billing from the web UI.
+2. A key saved in Settings.
+3. Neither — the SDK falls back to the Claude Code OAuth credentials.
+
+That resolution happens in one place and produces one environment object. The agent code does
+not branch on which source won.
 
 ## How a listing gets made
 

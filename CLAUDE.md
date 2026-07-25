@@ -11,6 +11,7 @@ npm run check          # svelte-check typecheck — RUN THIS before every commit
 docker compose up -d --build   # production build; serves on 127.0.0.1:5180
 node scripts/smoke-agent.mjs   # verify agent auth + settingSources isolation
 node scripts/dump-messages.mjs <dir-with-photos>   # inspect raw Agent SDK message shapes
+node scripts/build-windows.mjs # package dist-windows/ (needs Go + network)
 ```
 
 There is no test suite. `npm run check` (0 errors) plus a manual run is the bar.
@@ -28,6 +29,11 @@ there is no separate service. Server-only logic lives in `src/lib/server/`:
   job completes even if the client disconnects.
 - `dashboard.ts` — earnings aggregation + sample-data seeding.
 - `images.ts` — `sharp` resize/thumbnail and EXIF/GPS stripping.
+- `auth.ts` — resolves the credentials handed to the agent (env key → stored key → OAuth).
+
+The Windows package is built by `scripts/build-windows.mjs` from `windows/launcher` (a
+stdlib-only Go program) plus a pinned Node runtime. It is additive: nothing under `windows/`
+is reachable from the Linux or Docker path.
 
 The listing page (`src/routes/listing/[id]/+page.svelte`) is the workhorse UI.
 
@@ -46,10 +52,15 @@ The listing page (`src/routes/listing/[id]/+page.svelte`) is the workhorse UI.
 3. **Origin/CSRF handling is split across two files and both are needed.** `docker-compose.yml`
    sets `HOST_HEADER`/`PROTOCOL_HEADER` (covers a reverse proxy); `vite.config.ts`
    `csrf.trustedOrigins` lists direct origins (covers direct port access, where adapter-node
-   otherwise assumes `https`). **Change the published port → update both.**
+   otherwise assumes `https`). **Change the published port → update both** — and note the
+   Windows launcher pins 5180 for exactly this reason. It refuses to start on a different port
+   rather than silently landing outside `trustedOrigins` and 403-ing every upload, so a port
+   change is now a three-file change.
 
-4. **`BODY_SIZE_LIMIT=128M`** in `docker-compose.yml` — adapter-node defaults to 512K, which
-   rejects a single phone photo.
+4. **`BODY_SIZE_LIMIT=128M`** — adapter-node defaults to 512K, which rejects a single phone
+   photo. Set in **two** places that don't read each other: `docker-compose.yml` for the Linux
+   path and `windows/launcher/main.go` for the Windows one. Changing one without the other
+   leaves that platform silently unable to accept uploads.
 
 5. **Startup reconciliation** (`db.ts`) resets any listing stuck at `identifying`/`pricing` on
    boot — a restart kills in-flight agent runs, so their status must be cleared or the UI spins
@@ -58,6 +69,12 @@ The listing page (`src/routes/listing/[id]/+page.svelte`) is the workhorse UI.
 6. **Progress notes depend on an undocumented SDK detail** — tool calls arrive as `tool_use`
    content blocks nested inside `assistant` messages (see `agent/run.ts`). If notes go quiet
    after an SDK upgrade, run `dump-messages.mjs` and check whether the shape moved.
+
+7. **`agentEnv()` is passed explicitly to `query()`, not inherited.** That is what lets a key
+   saved in Settings work identically to one exported by Compose. Keep the precedence in
+   `auth.ts` (env → stored → OAuth) and keep it in one place — the agent must never branch on
+   which source won. The env-var-wins ordering is a safety property, not a preference: without
+   it, anyone who can reach the web UI of a deployed instance could repoint it at their own key.
 
 ## Conventions
 
@@ -74,6 +91,8 @@ The listing page (`src/routes/listing/[id]/+page.svelte`) is the workhorse UI.
 ## Never commit
 
 - `data/` (the SQLite DB and uploaded photos) — gitignored; it contains real listings, photos,
-  and the user's meetup note. Confirm `git status` shows no `data/` before committing.
+  the user's meetup note, and — since the Settings API-key field — possibly a live Anthropic API
+  key in plain text. Confirm `git status` shows no `data/` before committing.
+- `dist-windows/` and `.cache/` — build output and the downloaded Node runtime. Gitignored.
 - Anything with a real name, email, or physical location. The settings meetup-note placeholder
   and any example strings must stay generic.
