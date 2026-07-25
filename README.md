@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" alt="Fleabook" width="128" />
+</p>
+
 # Fleabook
 
 **Turn photos of your stuff into ready-to-paste Facebook Marketplace listings.**
