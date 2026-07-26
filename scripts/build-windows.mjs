@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Package Fleabook as a self-contained Windows folder.
+// Package Fleabook for Windows.
 //
-// Runs on Linux (or Windows) and produces `dist-windows/Fleabook/`, plus a zip
-// of it. Nothing here touches the Docker build — the Linux deployment path is
-// `docker compose up -d --build` and is unaffected by anything in this file.
+// Runs on Linux (or Windows) and produces three things in `dist-windows/`: the
+// unpacked `Fleabook/` folder, an installer built from it, and a zip of it for
+// anyone who would rather not install anything. Nothing here touches the Docker
+// build — the Linux deployment path is `docker compose up -d --build` and is
+// unaffected by anything in this file.
 //
 // What ends up in the package:
 //
@@ -14,12 +16,13 @@
 //   package.json      needed at the root for "type": "module", same as the image
 //
 // Usage:
-//   node scripts/build-windows.mjs            full build
-//   node scripts/build-windows.mjs --no-zip   skip the archive step
+//   node scripts/build-windows.mjs                  full build
+//   node scripts/build-windows.mjs --no-zip         skip the archive step
+//   node scripts/build-windows.mjs --no-installer   skip the installer step
 
 import { execFileSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
-import { cp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
@@ -38,7 +41,12 @@ const NODE_MAJOR = Number(NODE_VERSION.split('.')[0]);
 const NODE_DIR = `node-v${NODE_VERSION}-win-x64`;
 const NODE_URL = `https://nodejs.org/dist/v${NODE_VERSION}/${NODE_DIR}.zip`;
 
+const launcher = path.join(root, 'windows', 'launcher');
+const resources = path.join(root, 'windows', 'resources');
+const installerScript = path.join(root, 'windows', 'installer', 'fleabook.nsi');
+
 const skipZip = process.argv.includes('--no-zip');
+const skipInstaller = process.argv.includes('--no-installer');
 
 function log(step) {
 	console.log(`\n▶ ${step}`);
@@ -46,6 +54,16 @@ function log(step) {
 
 function run(cmd, args, opts = {}) {
 	execFileSync(cmd, args, { stdio: 'inherit', cwd: root, ...opts });
+}
+
+// null when makensis is not on PATH, so the check can happen up front rather
+// than after the several minutes the rest of the build takes.
+function makensisVersion() {
+	try {
+		return execFileSync('makensis', ['-VERSION'], { encoding: 'utf8' }).trim();
+	} catch {
+		return null;
+	}
 }
 
 async function exists(p) {
@@ -64,6 +82,24 @@ async function main() {
 				`node:sqlite needs Node 26 or newer — upgrade before packaging.`
 		);
 	}
+
+	// Checked before the build rather than after it: makensis is the one tool
+	// here that is not already required for `npm run dev`, and finding out it is
+	// missing after the npm install and the runtime download wastes minutes.
+	const nsis = skipInstaller ? null : makensisVersion();
+	if (!skipInstaller && !nsis) {
+		throw new Error(
+			'makensis is not on PATH, so the installer cannot be built.\n' +
+				'  Install it with:  sudo apt install nsis\n' +
+				'  Or skip it with:  node scripts/build-windows.mjs --no-installer'
+		);
+	}
+
+	// NSIS wants a four-part version, and package.json is the only place a
+	// version is recorded. A prerelease suffix would not survive the conversion,
+	// so drop it rather than emit something makensis rejects halfway through.
+	const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+	const version = (pkg.version ?? '0.0.0').split('-')[0];
 
 	log('Cleaning');
 	await rm(dist, { recursive: true, force: true });
@@ -110,11 +146,27 @@ async function main() {
 	]);
 
 	log('Compiling the launcher');
+	// -H=windowsgui puts the launcher in the GUI subsystem, so double-clicking it
+	// does not flash up a console. That is also why the launcher can no longer
+	// print anything: everything user-facing is a message box, everything else
+	// goes to %LOCALAPPDATA%\Fleabook\logs.
+	//
+	// The icon, the version block and the DPI/UAC manifest come from the
+	// committed resource_windows_amd64.syso, which the Go toolchain links in by
+	// filename. See windows/resources/README.md to regenerate it.
 	run(
 		'go',
-		['build', '-trimpath', '-ldflags', '-s -w', '-o', path.join(app, 'Fleabook.exe'), '.'],
+		[
+			'build',
+			'-trimpath',
+			'-ldflags',
+			'-s -w -H=windowsgui',
+			'-o',
+			path.join(app, 'Fleabook.exe'),
+			'.'
+		],
 		{
-			cwd: path.join(root, 'windows', 'launcher'),
+			cwd: launcher,
 			env: { ...process.env, GOOS: 'windows', GOARCH: 'amd64', CGO_ENABLED: '0' }
 		}
 	);
@@ -125,12 +177,30 @@ async function main() {
 	// package-lock.json is only needed for the install above.
 	await rm(path.join(app, 'package-lock.json'), { force: true });
 
+	const setup = path.join(dist, 'Fleabook-Setup.exe');
+	if (!skipInstaller) {
+		log(`Building the installer (${nsis.split('\n')[0]})`);
+		// Host-side paths are handed over as forward slashes: makensis on Linux
+		// does not treat a backslash as a separator when reading build files.
+		const forward = (p) => p.split(path.sep).join('/');
+		run('makensis', [
+			'-V2',
+			`-DPAYLOAD=${forward(app)}`,
+			`-DOUTFILE=${forward(setup)}`,
+			`-DRESOURCES=${forward(resources)}`,
+			`-DLICENSEFILE=${forward(path.join(root, 'LICENSE'))}`,
+			`-DVERSION=${version}`,
+			installerScript
+		]);
+	}
+
 	if (!skipZip) {
 		log('Zipping');
 		run('zip', ['-rq', path.join(dist, 'Fleabook-windows-x64.zip'), 'Fleabook'], { cwd: dist });
 	}
 
 	log('Done');
+	if (!skipInstaller) console.log(`  ${setup}  (what to hand to people)`);
 	console.log(`  ${app}`);
 	if (!skipZip) console.log(`  ${path.join(dist, 'Fleabook-windows-x64.zip')}`);
 }
@@ -141,18 +211,26 @@ function readmeText() {
 
 Turn photos of your stuff into Facebook Marketplace listings.
 
+This is the portable copy. If you would rather have Fleabook in your Start
+menu, use Fleabook-Setup.exe instead - it installs for you only and does not
+ask for an administrator password.
+
 Getting started
 ---------------
 
 1. Unzip this folder somewhere you can find it again, such as your Desktop.
    Do not run it from inside the zip file.
 2. Double-click Fleabook.exe.
-3. A black window opens and stays open. That is the app running - leave it be.
-   Your browser opens to http://127.0.0.1:5180 a moment later.
-4. To stop Fleabook, close the black window.
+3. Fleabook opens in its own window. The first start takes a few seconds.
+4. To stop Fleabook, close the window.
 
 Windows may warn that the app is unrecognised, because it is not code-signed.
 Choose "More info" and then "Run anyway" if you trust where you got this from.
+
+Fleabook draws its window with the Microsoft Edge WebView2 Runtime, which is
+already part of Windows 11 and of most Windows 10 machines. The installer adds
+it if it is missing; this portable copy cannot, so if it is not there Fleabook
+falls back to opening in your browser and tells you so.
 
 Connecting it to Claude
 -----------------------
@@ -182,12 +260,15 @@ Troubleshooting
 ---------------
 
 "Port 5180 is already in use"
-  Fleabook is probably already running. Look for the black window before
-  starting a second copy. If there is none, open Task Manager and end any
-  leftover node.exe.
+  Fleabook is probably already running. Look for its window in the taskbar
+  before starting a second copy. If there is none, open Task Manager and end
+  any leftover Fleabook.exe.
 
-The browser did not open
-  Fleabook is likely still running. Go to http://127.0.0.1:5180 yourself.
+Nothing happens when you double-click
+  There is no console window by design, so a failure that happens before the
+  window appears shows up as a message box - and, either way, in the log:
+
+    %LOCALAPPDATA%\\Fleabook\\logs\\fleabook.log
 `;
 }
 

@@ -90,13 +90,22 @@ npm run dev
 ### Windows
 
 Windows runs the app natively — no WSL, no Docker. Download
-**[the latest release zip](https://github.com/awall451/fleabook/releases/latest)** (~165 MB —
-most of it is the bundled Node runtime and the Claude Code binary the Agent SDK ships), unzip
-it, and double-click `Fleabook.exe`; it starts the same server on the same port and opens your
-browser. Note that GitHub's green *Code → Download ZIP* button gives you the source, not the
-app — the executable only comes from a release.
+**[the latest release](https://github.com/awall451/fleabook/releases/latest)** and run
+`Fleabook-Setup.exe`. It installs for you only, under `%LOCALAPPDATA%`, so Windows never asks
+for an administrator password, and it adds Start-menu and desktop shortcuts plus an entry in
+*Settings → Apps*. Fleabook then opens in its own window — not a browser tab. A portable zip
+is in the same release for anyone who would rather not install anything; unzip it and
+double-click `Fleabook.exe`. Note that GitHub's green *Code → Download ZIP* button gives you
+the source, not the app — the executable only comes from a release.
+
+The window is drawn with the Microsoft Edge WebView2 Runtime, which ships with Windows 11 and
+is on most Windows 10 machines; the installer adds it if it is missing. Neither build is
+code-signed, so the first run shows SmartScreen's "Windows protected your PC" — *More info* →
+*Run anyway*.
+
 Listings and photos live in `%LOCALAPPDATA%\Fleabook\data`, not in the program folder, so
-replacing the app on upgrade never touches them.
+upgrading or uninstalling never touches them (the uninstaller asks separately, and defaults to
+keeping them).
 
 To build the package yourself, from Linux or Windows:
 
@@ -104,9 +113,11 @@ To build the package yourself, from Linux or Windows:
 node scripts/build-windows.mjs
 ```
 
-That produces `dist-windows/Fleabook/` and a zip beside it (~160 MB compressed; most of it is
-the Claude Code binary the Agent SDK ships). It needs Go on the build machine for the launcher
-and network access to fetch the pinned Node runtime. It does not touch the Docker build.
+That produces `dist-windows/Fleabook-Setup.exe`, the unpacked `dist-windows/Fleabook/`, and a
+zip beside them (~160 MB compressed; most of it is the Claude Code binary the Agent SDK ships).
+It needs Go and `makensis` (`apt install nsis`) on the build machine, plus network access to
+fetch the pinned Node runtime. `--no-installer` skips the NSIS step. It does not touch the
+Docker build.
 
 Windows Docker Desktop also works if you prefer it — `docker compose up -d --build` is
 unchanged — but set `CLAUDE_DIR` first, because Compose expands `${HOME}` and Windows doesn't

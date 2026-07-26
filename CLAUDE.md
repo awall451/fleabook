@@ -11,7 +11,8 @@ npm run check          # svelte-check typecheck — RUN THIS before every commit
 docker compose up -d --build   # production build; serves on 127.0.0.1:5180
 node scripts/smoke-agent.mjs   # verify agent auth + settingSources isolation
 node scripts/dump-messages.mjs <dir-with-photos>   # inspect raw Agent SDK message shapes
-node scripts/build-windows.mjs # package dist-windows/ (needs Go + network)
+node scripts/build-windows.mjs # package dist-windows/ (needs Go, makensis, network)
+node scripts/build-windows.mjs --no-installer      # ...without the NSIS step
 ```
 
 There is no test suite. `npm run check` (0 errors) plus a manual run is the bar.
@@ -31,9 +32,10 @@ there is no separate service. Server-only logic lives in `src/lib/server/`:
 - `images.ts` — `sharp` resize/thumbnail and EXIF/GPS stripping.
 - `auth.ts` — resolves the credentials handed to the agent (env key → stored key → OAuth).
 
-The Windows package is built by `scripts/build-windows.mjs` from `windows/launcher` (a
-stdlib-only Go program) plus a pinned Node runtime. It is additive: nothing under `windows/`
-is reachable from the Linux or Docker path.
+The Windows package is built by `scripts/build-windows.mjs` from `windows/launcher` (a Go
+program: stdlib plus `go-webview2`) and `windows/installer` (an NSIS script), on top of a
+pinned Node runtime. It emits an installer, the unpacked folder, and a portable zip. It is
+additive: nothing under `windows/` is reachable from the Linux or Docker path.
 
 The listing page (`src/routes/listing/[id]/+page.svelte`) is the workhorse UI.
 
@@ -116,10 +118,47 @@ The listing page (`src/routes/listing/[id]/+page.svelte`) is the workhorse UI.
     table (the FK is part of the definition, so ALTER cannot do it) and is keyed on the
     `listing_title` column being absent.
 
+11. **The Windows launcher has no console, so `fmt.Println` goes nowhere.** It is linked with
+    `-H=windowsgui` (`build-windows.mjs`) because a console flashing up behind an app window
+    reads as broken software. Two channels replace it and they are not interchangeable:
+    `alert()` (a message box) for the handful of things a non-technical user must act on, and
+    `logf()` → `%LOCALAPPDATA%\Fleabook\logs\fleabook.log` for everything else, including
+    Node's own stdout/stderr. A failure before the window exists can only be reported by
+    `alert()`; a failure after it exists should render into the window via `errorHTML()`,
+    because a message box over a blank window says less than the window could. `logSink` is
+    nil until `startLogging()` succeeds — assign it to `cmd.Stdout` only when non-nil, since a
+    typed-nil `*os.File` in an `io.Writer` is not a nil interface and `os/exec` will write to it.
+
+12. **The window is WebView2, which means there is no address bar and no browser fallback for
+    anything the page does.** Two consequences. External links: a `target="_blank"` would open
+    a second chromeless window with no way back, so `externalLinkScript` intercepts clicks
+    leaving the app's origin and hands them to the real browser through the bound
+    `fleabookOpenExternal` — which validates the scheme, because `rundll32`'s
+    `FileProtocolHandler` acts on far more than http. `Bind` works by injecting at document
+    creation, so it must be called before the first navigation. And identity: the icon, the
+    version block and the DPI/UAC manifest all come from the **committed**
+    `windows/launcher/resource_windows_amd64.syso`, linked by filename with no build step —
+    regenerate it (`windows/resources/README.md`) after changing the icon, the manifest, or
+    the version in `package.json`, or the executable keeps claiming the old one.
+
+13. **The installer is per-user by construction — keep it that way.** `RequestExecutionLevel
+    user`, `$LOCALAPPDATA\Programs\Fleabook`, uninstall entry in HKCU. Nothing writes to
+    HKLM or Program Files, which is what keeps the install free of a UAC prompt; the people
+    this build is for are frequently not administrators of the machine they are installing on,
+    and an elevation prompt is where they stop. The manifest's `asInvoker` is the same
+    property enforced from the other side. Stopping a running copy is `taskkill /IM
+    Fleabook.exe` **only** — never `node.exe`, which would kill unrelated Node processes; the
+    launcher's job object is what takes the server down with it, so invariant 5's reconciliation
+    and this both depend on that job object surviving.
+
 ## Conventions
 
 - **Keep it dependency-light.** SQLite is `node:sqlite` (no native build); charts are hand-rolled
   inline SVG/CSS (no charting lib). Don't add a heavy dependency without a strong reason.
+- **The launcher's one dependency must stay cgo-free.** `go-webview2` is pure Go on purpose:
+  the package is cross-compiled from Linux with `CGO_ENABLED=0`, so anything needing a C
+  toolchain would move the Windows build onto a Windows machine. Same for the installer — NSIS
+  was chosen over Inno Setup because `makensis` runs natively on Linux.
 - **Agent output voice rules live in the prompts** (`identify.ts`, `price.ts`), not in
   post-processing. The agent writes in the seller's voice, invents nothing not in the photos or
   the user's context box, and never writes meetup/pickup/payment language — that comes from the
