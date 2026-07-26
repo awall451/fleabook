@@ -438,6 +438,7 @@
 					id="context"
 					rows="3"
 					placeholder="e.g. One white unit is new-in-box, sealed. Selling the two black ones used."
+					use:autogrow={form.userContext}
 					bind:value={form.userContext}
 					oninput={scheduleSave}
 					disabled={chaining}
@@ -1222,13 +1223,6 @@
 	.counter {
 		color: var(--muted);
 		font-variant-numeric: tabular-nums;
-	}
-
-	/* Auto-grown by the autogrow action — the drag handle and tall min-height
-	   floor are no longer needed. */
-	#description {
-		resize: none;
-		min-height: 0;
 	}
 
 	.counter.over {

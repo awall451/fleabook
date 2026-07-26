@@ -16,6 +16,10 @@
 			<span class="wordmark">fleabook</span>
 		</a>
 		<nav>
+			<!-- The wordmark to the left already links here, but a labelled Home sits
+			     where people look for it: an unlabelled logo is a convention you have
+			     to know rather than one you can see. -->
+			<a class="link" href="/">Home</a>
 			<a class="link" href="/dashboard">Dashboard</a>
 			<a class="link" href="/settings">Settings</a>
 			<a class="new" href="/new">New listing</a>

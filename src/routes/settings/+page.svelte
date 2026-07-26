@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
+	import { autogrow } from '$lib/actions/autogrow';
 	import { applyTheme, DEFAULT_THEME, readTheme, THEMES, type ThemeId } from '$lib/theme';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -50,6 +51,7 @@
 			rows="3"
 			maxlength="500"
 			placeholder="e.g. Meet at the Main St. grocery store parking lot"
+			use:autogrow={meetupNote}
 			bind:value={meetupNote}
 		></textarea>
 		<div class="row small muted">
