@@ -1,7 +1,8 @@
 import type { PageServerLoad } from './$types';
-import { getCoverPhoto, listListings } from '$lib/server/db';
+import { getCoverPhoto, listListings, photoCounts } from '$lib/server/db';
 import { thumbName } from '$lib/server/images';
 import { renewDays } from '$lib/server/renewals';
+import { SORT_COOKIE, toSort, toView, VIEW_COOKIE } from '$lib/listView';
 import { RENEW_DUE, renewalStatus, STATUSES, type Listing, type Status } from '$lib/types';
 
 function matchesSearch(listing: Listing, needle: string): boolean {
@@ -24,7 +25,7 @@ function matchesSearch(listing: Listing, needle: string): boolean {
 		.every((word) => haystack.includes(word));
 }
 
-export const load: PageServerLoad = ({ url }) => {
+export const load: PageServerLoad = ({ url, cookies }) => {
 	const requested = url.searchParams.get('status') ?? 'all';
 	const filter =
 		requested === 'all' || requested === RENEW_DUE || STATUSES.includes(requested as Status)
@@ -62,11 +63,13 @@ export const load: PageServerLoad = ({ url }) => {
 		return listing.status === filter;
 	});
 
+	const photos = photoCounts();
 	const listings = selected.map((listing) => {
 		const cover = getCoverPhoto(listing.id);
 		return {
 			...listing,
-			cover: cover ? `/photos/${listing.id}/${thumbName(cover.filename)}` : null
+			cover: cover ? `/photos/${listing.id}/${thumbName(cover.filename)}` : null,
+			photoCount: photos[listing.id] ?? 0
 		};
 	});
 
@@ -75,6 +78,10 @@ export const load: PageServerLoad = ({ url }) => {
 		status: filter,
 		query,
 		counts,
+		// Read here so the first paint is already in the right shape — see
+		// `listView.ts` for why these are cookies and the theme is not.
+		view: toView(cookies.get(VIEW_COOKIE)),
+		sort: toSort(cookies.get(SORT_COOKIE)),
 		// With reminders switched off there is no clock, so the renew filter would
 		// be permanently empty and permanently meaningless.
 		remindersOn: days > 0

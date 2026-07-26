@@ -1,5 +1,16 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
+	import { SvelteSet } from 'svelte/reactivity';
+	import ListingRow from '$lib/components/ListingRow.svelte';
+	import {
+		rememberPreference,
+		SORT_COOKIE,
+		SORTS,
+		sortListings,
+		VIEW_COOKIE,
+		type SortId,
+		type ViewId
+	} from '$lib/listView';
 	import { formatPrice, RENEW_DUE, STATUSES } from '$lib/types';
 	import type { PageData } from './$types';
 
@@ -63,6 +74,35 @@
 		pricing: 'researching price…'
 	};
 
+	// Display preferences arrive already resolved from the cookie, so the server
+	// rendered this page in the right shape and there is nothing to correct after
+	// hydration. The local override is what makes a change instant: the cookie is
+	// written for the next load, but this render must not wait for one.
+	let viewOverride = $state<ViewId | null>(null);
+	let sortOverride = $state<SortId | null>(null);
+	let view = $derived(viewOverride ?? data.view);
+	let sort = $derived(sortOverride ?? data.sort);
+
+	function setView(next: ViewId) {
+		viewOverride = next;
+		rememberPreference(VIEW_COOKIE, next);
+	}
+
+	function setSort(next: SortId) {
+		sortOverride = next;
+		rememberPreference(SORT_COOKIE, next);
+	}
+
+	let listings = $derived(sortListings(data.listings, sort));
+
+	// Which rows are open. Keyed by id rather than index so reordering or
+	// refreshing the list does not silently expand a different listing.
+	let openRows = $state(new SvelteSet<string>());
+	function toggleRow(id: string) {
+		if (openRows.has(id)) openRows.delete(id);
+		else openRows.add(id);
+	}
+
 	let anyWorking = $derived(data.listings.some((l) => l.status in WORKING));
 
 	// While something is working elsewhere, refresh the list on an interval so the
@@ -87,6 +127,34 @@
 		{#if search}
 			<button type="button" class="clear" onclick={clearSearch} aria-label="Clear search">×</button>
 		{/if}
+	</div>
+
+	<div class="display">
+		<label class="sr-only" for="sort">Sort</label>
+		<select id="sort" value={sort} onchange={(e) => setSort(e.currentTarget.value as SortId)}>
+			{#each SORTS as option (option.id)}
+				<option value={option.id}>{option.label}</option>
+			{/each}
+		</select>
+
+		<div class="views" role="group" aria-label="View">
+			<button
+				type="button"
+				class:on={view === 'tiles'}
+				aria-pressed={view === 'tiles'}
+				onclick={() => setView('tiles')}
+			>
+				Tiles
+			</button>
+			<button
+				type="button"
+				class:on={view === 'rows'}
+				aria-pressed={view === 'rows'}
+				onclick={() => setView('rows')}
+			>
+				Rows
+			</button>
+		</div>
 	</div>
 
 	<div class="filters">
@@ -118,9 +186,20 @@
 			Nothing here yet. <a href="/new">Upload some photos</a> to start a listing.
 		{/if}
 	</p>
+{:else if view === 'rows'}
+	<div class="rows">
+		{#each listings as listing (listing.id)}
+			<ListingRow
+				{listing}
+				working={WORKING[listing.status] ?? null}
+				expanded={openRows.has(listing.id)}
+				ontoggle={() => toggleRow(listing.id)}
+			/>
+		{/each}
+	</div>
 {:else}
 	<div class="grid">
-		{#each data.listings as listing (listing.id)}
+		{#each listings as listing (listing.id)}
 			<a class="card" href="/listing/{listing.id}">
 				<div class="thumb">
 					{#if listing.cover}
@@ -200,6 +279,59 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.4rem;
+	}
+
+	/* Pushed to the end of the toolbar: how the list is laid out is a different
+	   question from what it contains, and mixing the two controls invites you to
+	   read the sort as another filter. */
+	.display {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-left: auto;
+	}
+
+	.display select {
+		width: auto;
+		font-size: 0.8rem;
+		padding: 0.2rem 0.4rem;
+	}
+
+	.views {
+		display: inline-flex;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		overflow: hidden;
+	}
+
+	.views button {
+		border: 0;
+		background: none;
+		color: var(--muted);
+		font: inherit;
+		font-size: 0.8rem;
+		padding: 0.2rem 0.7rem;
+		cursor: pointer;
+	}
+
+	.views button.on {
+		background: var(--accent);
+		color: var(--accent-text);
+	}
+
+	.rows {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 
 	.chip {

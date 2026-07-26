@@ -619,6 +619,17 @@ export function addPhoto(listingId: string, filename: string): Photo {
 	return { id, listing_id: listingId, filename, order_idx: orderIdx, is_cover: Boolean(isCover) };
 }
 
+/** Photo count per listing, in one query. The grid needs this for every row it
+ *  renders, and asking per listing is a query each. */
+export function photoCounts(): Record<string, number> {
+	const rows = db()
+		.prepare('SELECT listing_id, count(*) AS n FROM photos GROUP BY listing_id')
+		.all() as { listing_id: string; n: number }[];
+	const counts: Record<string, number> = {};
+	for (const row of rows) counts[row.listing_id] = row.n;
+	return counts;
+}
+
 export function getCoverPhoto(listingId: string): Photo | null {
 	const photos = getPhotos(listingId);
 	return photos.find((p) => p.is_cover) ?? photos[0] ?? null;
