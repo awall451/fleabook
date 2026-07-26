@@ -38,19 +38,47 @@
 		return null;
 	});
 
-	let estimate = $derived.by(() => {
-		if (listing.ai_price_basis === 'seller') return 'priced by you — no research run';
-		if (listing.ai_price_low != null && listing.ai_price_high != null) {
-			const range = `est $${formatPrice(listing.ai_price_low)}–${formatPrice(listing.ai_price_high)}`;
-			return listing.ai_price_confidence
-				? `${range} · ${listing.ai_price_confidence} confidence`
-				: range;
+	// The detail lines are assembled here rather than in markup so the separators
+	// fall between the parts that actually exist — a row with no estimate and no
+	// retail figure should not render a stranded "·".
+	let priceLine = $derived.by(() => {
+		const parts: string[] = [];
+		if (listing.ai_price_basis === 'seller') {
+			parts.push('priced by you — no research run');
+		} else if (listing.ai_price_low != null && listing.ai_price_high != null) {
+			parts.push(
+				`est $${formatPrice(listing.ai_price_low)}–${formatPrice(listing.ai_price_high)}`
+			);
+			if (listing.ai_price_confidence) parts.push(`${listing.ai_price_confidence} confidence`);
 		}
-		return null;
+		if (listing.ai_msrp_cents) parts.push(`retail new $${formatPrice(listing.ai_msrp_cents)}`);
+		return parts.length > 0 ? parts.join(' · ') : 'No price estimate yet';
+	});
+
+	let historyLine = $derived.by(() => {
+		const parts: string[] = [];
+		if (listing.status === 'sold' && listing.sold_at) {
+			parts.push(
+				`Sold ${agoLabel(listing.sold_at)}${
+					listing.sold_price_cents != null ? ` for $${formatPrice(listing.sold_price_cents)}` : ''
+				}`
+			);
+		} else if (listing.posted_at) {
+			parts.push(`Posted ${agoLabel(listing.posted_at)}`);
+			parts.push(`renewed ${listing.renewal_count} time${listing.renewal_count === 1 ? '' : 's'}`);
+		} else {
+			// Listings posted before the renewal clock existed have no posted_at, and
+			// guessing one from updated_at would be wrong the moment the listing is
+			// edited. Say so rather than showing an invented date.
+			parts.push('Not posted yet, or posted before renewal tracking');
+		}
+		parts.push(`updated ${agoLabel(listing.updated_at)}`);
+		return parts.join(' · ');
 	});
 </script>
 
-<div class="row" class:expanded>
+<div class="card" class:expanded>
+	<div class="row">
 	<a class="main" href="/listing/{listing.id}">
 		<div class="thumb">
 			{#if listing.cover}
@@ -95,75 +123,49 @@
 		</div>
 	</a>
 
-	<button
-		type="button"
-		class="chev"
-		aria-expanded={expanded}
-		aria-label={expanded ? 'Hide details' : 'Show details'}
-		onclick={ontoggle}
-	>
-		<span aria-hidden="true">{expanded ? '⌄' : '›'}</span>
-	</button>
+		<button
+			type="button"
+			class="chev"
+			aria-expanded={expanded}
+			aria-label={expanded ? 'Hide details' : 'Show details'}
+			onclick={ontoggle}
+		>
+			<span aria-hidden="true">{expanded ? '⌄' : '›'}</span>
+		</button>
+	</div>
+
+	{#if expanded}
+		<div class="detail small">
+			<div class="facts">
+				<div>{priceLine}</div>
+				<div class="muted">{historyLine}</div>
+			</div>
+			<a class="go" href="/listing/{listing.id}">View listing →</a>
+		</div>
+	{/if}
 </div>
 
-{#if expanded}
-	<div class="detail small">
-		<div class="line">
-			{#if estimate}
-				<span>{estimate}</span>
-			{:else}
-				<span class="muted">No price estimate yet</span>
-			{/if}
-			{#if listing.ai_msrp_cents}
-				<span class="muted">retail new ${formatPrice(listing.ai_msrp_cents)}</span>
-			{/if}
-		</div>
-
-		<div class="line muted">
-			{#if listing.status === 'sold' && listing.sold_at}
-				<span>
-					Sold {agoLabel(listing.sold_at)}{listing.sold_price_cents != null
-						? ` for $${formatPrice(listing.sold_price_cents)}`
-						: ''}
-				</span>
-			{:else if listing.posted_at}
-				<span>Posted {agoLabel(listing.posted_at)}</span>
-				<span>
-					renewed {listing.renewal_count} time{listing.renewal_count === 1 ? '' : 's'}
-				</span>
-			{:else}
-				<!-- Listings posted before the renewal clock existed have no posted_at,
-				     and guessing one from updated_at would be wrong the moment the
-				     listing is edited. Say so rather than showing an invented date. -->
-				<span>Not posted yet, or posted before renewal tracking</span>
-			{/if}
-			<span>Updated {agoLabel(listing.updated_at)}</span>
-		</div>
-
-		<a class="detail-link" href="/listing/{listing.id}">View listing →</a>
-	</div>
-{/if}
-
 <style>
-	.row {
-		display: flex;
-		align-items: stretch;
+	/* The row and its detail share one border. Butting two bordered boxes
+	   together instead leaves a doubled seam that no amount of corner-squaring
+	   hides — the card owns the outline, the parts inside own nothing. */
+	.card {
+		--thumb: 52px;
+		--gutter: 0.6rem;
+		--gap: 0.75rem;
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
 		background: var(--surface);
 		overflow: hidden;
 	}
 
-	.row:hover {
+	.card:hover {
 		border-color: var(--accent);
 	}
 
-	/* An expanded row and its detail panel read as one card: square off the
-	   join so they do not look like two stacked things. */
-	.row.expanded {
-		border-bottom-left-radius: 0;
-		border-bottom-right-radius: 0;
-		border-bottom-color: transparent;
+	.row {
+		display: flex;
+		align-items: stretch;
 	}
 
 	.main {
@@ -171,8 +173,8 @@
 		min-width: 0;
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 0.6rem;
+		gap: var(--gap);
+		padding: 0.5rem var(--gutter);
 		text-decoration: none;
 		color: inherit;
 	}
@@ -180,8 +182,8 @@
 	.thumb {
 		position: relative;
 		flex: none;
-		width: 52px;
-		height: 52px;
+		width: var(--thumb);
+		height: var(--thumb);
 		border-radius: calc(var(--radius) - 2px);
 		background: var(--surface-2);
 		display: grid;
@@ -307,27 +309,30 @@
 		color: var(--accent);
 	}
 
+	/* Indented to where the title starts, so the detail reads as belonging to
+	   this row rather than to the column of thumbnails. */
 	.detail {
-		border: 1px solid var(--border);
-		border-top: 0;
-		border-bottom-left-radius: var(--radius);
-		border-bottom-right-radius: var(--radius);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.2rem 1rem;
+		border-top: 1px solid var(--border);
 		background: var(--surface-2);
-		padding: 0.5rem 0.7rem 0.6rem;
+		padding: 0.45rem var(--gutter) 0.5rem
+			calc(var(--gutter) + var(--thumb) + var(--gap));
+	}
+
+	.facts {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: 0.1rem;
+		min-width: 0;
 	}
 
-	.line {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.15rem 0.75rem;
-	}
-
-	.detail-link {
-		align-self: flex-start;
-		margin-top: 0.2rem;
+	.go {
+		flex: none;
+		white-space: nowrap;
 	}
 
 	@media (max-width: 620px) {
@@ -338,6 +343,12 @@
 
 		.sub {
 			display: none;
+		}
+
+		/* No room to indent past the thumbnail on a phone, and the alignment it
+		   was buying is gone anyway once the row wraps. */
+		.detail {
+			padding-left: var(--gutter);
 		}
 	}
 </style>
