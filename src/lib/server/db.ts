@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Listing, Photo, Status } from '$lib/types';
+import type { AgentRun, AgentStage, Listing, ListingEvent, Photo, Status } from '$lib/types';
 
 export const DATA_DIR = process.env.DATA_DIR ?? path.resolve('data');
 export const PHOTO_DIR = path.join(DATA_DIR, 'photos');
@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS listings (
   -- Mock rows for the dashboard. Hidden from the listings grid; removable.
   is_sample        INTEGER NOT NULL DEFAULT 0,
 
+  -- Renewal clock: when the listing first went up, and when it was last renewed.
+  posted_at        INTEGER,
+  renewed_at       INTEGER,
+  renewal_count    INTEGER NOT NULL DEFAULT 0,
+
   error           TEXT,
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL
@@ -66,6 +71,53 @@ CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
+
+-- One row per agent stage per generate. Written by agent/run.ts on both the
+-- success and failure paths, so the failure rate is visible too.
+--
+-- Deliberately NOT a foreign key onto listings. This is a spend record, and
+-- spend does not stop having happened when the listing is deleted — a run that
+-- cost real money and produced a listing you threw away is exactly the run
+-- worth seeing on the dashboard. An ON DELETE CASCADE here silently erased that
+-- history. listing_title is snapshotted at write time for the same reason:
+-- after the listing is gone, the id alone cannot say what was priced.
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id    TEXT NOT NULL,
+  listing_title TEXT,
+  stage         TEXT NOT NULL,
+  model         TEXT,
+  -- 2 when the JSON came back malformed and runStructured re-prompted. The token
+  -- columns are summed across every attempt, so they still bill correctly.
+  attempts      INTEGER NOT NULL DEFAULT 1,
+  input_tokens  INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+  cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_usd      REAL NOT NULL DEFAULT 0,
+  -- Which credential paid. Recorded per run because a user can move between a
+  -- subscription and an API key; without it, totalling cost over history mixes
+  -- real charges with subscription-equivalent estimates.
+  auth_mode     TEXT NOT NULL,
+  duration_ms   INTEGER NOT NULL DEFAULT 0,
+  ok            INTEGER NOT NULL DEFAULT 1,
+  error         TEXT,
+  created_at    INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_created ON agent_runs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_listing ON agent_runs(listing_id);
+
+-- Posting and renewal history, with the asking price at each point.
+CREATE TABLE IF NOT EXISTS listing_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id  TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,
+  price_cents INTEGER,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_listing_events ON listing_events(listing_id, created_at);
 `;
 
 let _db: DatabaseSync | null = null;
@@ -119,6 +171,76 @@ function migrate(handle: DatabaseSync): void {
 	if (!columns.has('is_sample')) {
 		handle.exec('ALTER TABLE listings ADD COLUMN is_sample INTEGER NOT NULL DEFAULT 0');
 	}
+	if (!columns.has('posted_at')) {
+		handle.exec('ALTER TABLE listings ADD COLUMN posted_at INTEGER');
+	}
+	if (!columns.has('renewed_at')) {
+		handle.exec('ALTER TABLE listings ADD COLUMN renewed_at INTEGER');
+	}
+	if (!columns.has('renewal_count')) {
+		handle.exec('ALTER TABLE listings ADD COLUMN renewal_count INTEGER NOT NULL DEFAULT 0');
+	}
+
+	migrateAgentRuns(handle);
+}
+
+/**
+ * Drop the `ON DELETE CASCADE` that used to tie spend records to listings, and
+ * add the snapshotted title.
+ *
+ * A plain ADD COLUMN cannot do this — the foreign key is part of the table
+ * definition, so the table has to be rebuilt. Existing rows are copied across
+ * and their titles backfilled from whichever listings still exist; runs whose
+ * listing was already deleted keep a null title, which the dashboard renders as
+ * "deleted listing". Their tokens were always the point, and those survive.
+ */
+function migrateAgentRuns(handle: DatabaseSync): void {
+	const runColumns = new Set(
+		(handle.prepare('PRAGMA table_info(agent_runs)').all() as { name: string }[]).map((c) => c.name)
+	);
+	if (runColumns.has('listing_title')) return;
+
+	// Foreign keys are enforced on this connection, so turn them off for the
+	// swap — dropping the old table with them on would cascade into the copy.
+	handle.exec('PRAGMA foreign_keys = OFF');
+	try {
+		handle.exec(`
+			BEGIN;
+			CREATE TABLE agent_runs_new (
+			  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			  listing_id    TEXT NOT NULL,
+			  listing_title TEXT,
+			  stage         TEXT NOT NULL,
+			  model         TEXT,
+			  attempts      INTEGER NOT NULL DEFAULT 1,
+			  input_tokens  INTEGER NOT NULL DEFAULT 0,
+			  output_tokens INTEGER NOT NULL DEFAULT 0,
+			  cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+			  cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+			  cost_usd      REAL NOT NULL DEFAULT 0,
+			  auth_mode     TEXT NOT NULL,
+			  duration_ms   INTEGER NOT NULL DEFAULT 0,
+			  ok            INTEGER NOT NULL DEFAULT 1,
+			  error         TEXT,
+			  created_at    INTEGER NOT NULL
+			);
+			INSERT INTO agent_runs_new
+			  (id, listing_id, listing_title, stage, model, attempts, input_tokens,
+			   output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd,
+			   auth_mode, duration_ms, ok, error, created_at)
+			SELECT r.id, r.listing_id, l.title, r.stage, r.model, r.attempts, r.input_tokens,
+			       r.output_tokens, r.cache_read_tokens, r.cache_creation_tokens, r.cost_usd,
+			       r.auth_mode, r.duration_ms, r.ok, r.error, r.created_at
+			  FROM agent_runs r LEFT JOIN listings l ON l.id = r.listing_id;
+			DROP TABLE agent_runs;
+			ALTER TABLE agent_runs_new RENAME TO agent_runs;
+			CREATE INDEX IF NOT EXISTS idx_agent_runs_created ON agent_runs(created_at DESC);
+			CREATE INDEX IF NOT EXISTS idx_agent_runs_listing ON agent_runs(listing_id);
+			COMMIT;
+		`);
+	} finally {
+		handle.exec('PRAGMA foreign_keys = ON');
+	}
 }
 
 /** node:sqlite hands back null-prototype rows; rebuild them as plain objects
@@ -163,6 +285,10 @@ function toListing(row: Record<string, unknown>): Listing {
 
 		sold_price_cents: (row.sold_price_cents as number) ?? null,
 		sold_at: (row.sold_at as number) ?? null,
+
+		posted_at: (row.posted_at as number) ?? null,
+		renewed_at: (row.renewed_at as number) ?? null,
+		renewal_count: (row.renewal_count as number) ?? 0,
 
 		error: (row.error as string) ?? null,
 		created_at: row.created_at as number,
@@ -298,16 +424,142 @@ export function updateListing(
 
 	if (columns.length === 0) return getListing(id);
 
+	const now = Date.now();
+
+	// Starting the renewal clock happens here rather than in a dedicated route
+	// because the UI reaches 'posted' through the generic PATCH — this is the one
+	// choke point every path goes through. Only the *first* post stamps it;
+	// later renewals move `renewed_at` instead, keeping "how long has this been
+	// on the market" separate from "when does it next need renewing".
+	const firstPost = patch.status === 'posted' && getListing(id)?.posted_at == null;
+	if (firstPost) {
+		columns.push('posted_at = ?');
+		values.push(now);
+	}
+
 	columns.push('updated_at = ?');
-	values.push(Date.now(), id);
+	values.push(now, id);
 
 	db()
 		.prepare(`UPDATE listings SET ${columns.join(', ')} WHERE id = ?`)
 		.run(...(values as never[]));
-	return getListing(id);
+
+	const updated = getListing(id);
+	if (firstPost) recordListingEvent(id, 'posted', updated?.price_cents ?? null, now);
+	return updated;
+}
+
+/** Reset the renewal clock and snapshot the asking price at that moment. The
+ *  price may have been edited just before renewing — that is the point. */
+export function renewListing(id: string): Listing | null {
+	const now = Date.now();
+	db()
+		.prepare(
+			'UPDATE listings SET renewed_at = ?, renewal_count = renewal_count + 1, updated_at = ? WHERE id = ?'
+		)
+		.run(now, now, id);
+	const updated = getListing(id);
+	recordListingEvent(id, 'renewed', updated?.price_cents ?? null, now);
+	return updated;
+}
+
+function recordListingEvent(
+	listingId: string,
+	kind: ListingEvent['kind'],
+	priceCents: number | null,
+	at: number
+): void {
+	db()
+		.prepare(
+			'INSERT INTO listing_events (listing_id, kind, price_cents, created_at) VALUES (?, ?, ?, ?)'
+		)
+		.run(listingId, kind, priceCents, at);
+}
+
+export function listingEvents(listingId: string): ListingEvent[] {
+	const rows = db()
+		.prepare('SELECT * FROM listing_events WHERE listing_id = ? ORDER BY created_at')
+		.all(listingId) as Record<string, unknown>[];
+	return rows.map((row) => ({
+		id: row.id as number,
+		listing_id: row.listing_id as string,
+		kind: row.kind as ListingEvent['kind'],
+		price_cents: (row.price_cents as number) ?? null,
+		created_at: row.created_at as number
+	}));
+}
+
+/** `listing_title` is not supplied by callers — the insert reads it from the
+ *  listings table, and `deleteListing` fills in any that were still null. */
+export type AgentRunInput = Omit<AgentRun, 'id' | 'created_at' | 'listing_title'>;
+
+/** Record what one agent stage cost. Called from agent/run.ts on both paths. */
+export function recordAgentRun(run: AgentRunInput): void {
+	db()
+		.prepare(
+			`INSERT INTO agent_runs
+			   (listing_id, listing_title, stage, model, attempts, input_tokens, output_tokens,
+			    cache_read_tokens, cache_creation_tokens, cost_usd, auth_mode,
+			    duration_ms, ok, error, created_at)
+			 VALUES (?, (SELECT title FROM listings WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		)
+		.run(
+			run.listing_id,
+			run.listing_id,
+			run.stage,
+			run.model,
+			run.attempts,
+			run.input_tokens,
+			run.output_tokens,
+			run.cache_read_tokens,
+			run.cache_creation_tokens,
+			run.cost_usd,
+			run.auth_mode,
+			run.duration_ms,
+			run.ok ? 1 : 0,
+			run.error,
+			Date.now()
+		);
+}
+
+export function toAgentRun(row: Record<string, unknown>): AgentRun {
+	return {
+		id: row.id as number,
+		listing_id: row.listing_id as string,
+		listing_title: (row.listing_title as string) ?? null,
+		stage: row.stage as AgentStage,
+		model: (row.model as string) ?? null,
+		attempts: row.attempts as number,
+		input_tokens: row.input_tokens as number,
+		output_tokens: row.output_tokens as number,
+		cache_read_tokens: row.cache_read_tokens as number,
+		cache_creation_tokens: row.cache_creation_tokens as number,
+		cost_usd: row.cost_usd as number,
+		auth_mode: row.auth_mode as string,
+		duration_ms: row.duration_ms as number,
+		ok: Boolean(row.ok),
+		error: (row.error as string) ?? null,
+		created_at: row.created_at as number
+	};
+}
+
+export function agentRunsForListing(listingId: string): AgentRun[] {
+	const rows = db()
+		.prepare('SELECT * FROM agent_runs WHERE listing_id = ? ORDER BY created_at')
+		.all(listingId) as Record<string, unknown>[];
+	return rows.map(toAgentRun);
 }
 
 export function deleteListing(id: string): void {
+	// Snapshot the title onto the spend records before the listing goes. Identify
+	// runs are recorded before the listing has a title at all, so this is the last
+	// moment the name of the thing you paid to describe still exists anywhere.
+	db()
+		.prepare(
+			`UPDATE agent_runs SET listing_title = (SELECT title FROM listings WHERE id = ?)
+			 WHERE listing_id = ? AND listing_title IS NULL`
+		)
+		.run(id, id);
 	db().prepare('DELETE FROM listings WHERE id = ?').run(id);
 }
 

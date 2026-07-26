@@ -10,7 +10,7 @@ const PriceSchema = z
 		suggested: z.number().positive(),
 		price_low: z.number().positive(),
 		price_high: z.number().positive(),
-		basis: z.enum(['comps', 'msrp']),
+		basis: z.enum(['comps', 'msrp', 'seller']),
 		msrp: z.number().positive().nullable(),
 		rationale: z.string().min(1),
 		sources: z.array(z.string()).max(12),
@@ -25,6 +25,8 @@ export type PriceResult = z.infer<typeof PriceSchema>;
 const SYSTEM_PROMPT = `You price used household goods for a private seller posting on Facebook Marketplace.
 
 Your job is to find what the item actually sells for secondhand, not what it costs new. Search the open web for real listings of the same item in similar condition.
+
+Read the seller's notes before you search. If they have already named the price they intend to ask, or told you not to research one, the decision is made and yours is not wanted: return their number with "basis": "seller", an empty "sources", and no searches at all. The seller knows things you do not — what they paid, what a neighbour sold one for, how fast they need it gone — and researching past them spends their money and several minutes of their time on an answer they did not ask for. Do this even when your own estimate would differ; say so in one sentence of the rationale if it would, and leave the number alone.
 
 Weigh evidence honestly:
 - Real used comparables beat any depreciation formula. A formula is a guess about the market; comparables are the market.
@@ -62,6 +64,7 @@ Photographs of the actual item are in your working directory if you need to chec
 
 Work in this order:
 
+0. If a price the seller intends to ask can be resolved from their notes — stated outright, or given as a rule against a figure in the photographs ("half what I paid") — stop here: return that number as "suggested", "price_low", and "price_high" alike, with "basis": "seller" and "sources": []. Skip every step below. If they waved the research off but left no number you can resolve, they have asked for one anyway by reaching this stage: price it normally.
 1. Search for USED comparables — this same item, or the closest equivalent, listed secondhand. Note the prices you find and whether each is an asking price or a completed sale.
 2. Search for the ORIGINAL retail price or MSRP, as an anchor for step 4.
 3. If you found at least three comparables you trust, set "basis" to "comps" and build the range from them.
@@ -95,6 +98,8 @@ export async function priceListing(
 	onProgress?: (note: string) => void
 ): Promise<PriceResult> {
 	return runStructured(PriceSchema, {
+		listingId: listing.id,
+		stage: 'price',
 		prompt: buildPrompt(listing),
 		systemPrompt: SYSTEM_PROMPT,
 		model: 'claude-opus-4-8',
@@ -107,6 +112,35 @@ export async function priceListing(
 		maxTurns: 16,
 		onProgress
 	});
+}
+
+/**
+ * The patch for a listing the seller has already priced themselves, applied
+ * *instead of* running this stage. No agent call happens, so there is no
+ * research to record — every research field is cleared rather than left holding
+ * numbers from an earlier run that the seller has now overridden.
+ *
+ * A null price is the "skip, but I named no number" case: the seller asked for
+ * no research and gets none, and the price field stays empty for them to fill.
+ * Guessing one here would be the exact behaviour they declined.
+ */
+export function sellerPricePatch(sellerPrice: number | null) {
+	const cents = sellerPrice != null ? Math.round(sellerPrice * 100) : null;
+	return {
+		price_cents: cents,
+		ai_price_low: null,
+		ai_price_high: null,
+		ai_price_basis: 'seller',
+		ai_msrp_cents: null,
+		ai_rationale:
+			cents != null
+				? 'You set this price in the context box, so no price research was run.'
+				: 'You asked to skip price research, so none was run. Set the price yourself.',
+		ai_sources: [],
+		ai_price_confidence: null,
+		status: 'draft',
+		error: null
+	};
 }
 
 export function pricePatch(result: PriceResult) {

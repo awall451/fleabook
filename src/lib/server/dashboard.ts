@@ -244,6 +244,17 @@ export function insertSampleData(): void {
 		return seed / 0x7fffffff;
 	};
 
+	// Sample listings get sample agent runs too, so "Load sample data" also
+	// demonstrates the usage panel. They hang off the listing rows, so
+	// clearSampleData's DELETE cascades them away — no extra cleanup.
+	const runStmt = handle.prepare(
+		`INSERT INTO agent_runs
+		   (listing_id, stage, model, attempts, input_tokens, output_tokens,
+		    cache_read_tokens, cache_creation_tokens, cost_usd, auth_mode,
+		    duration_ms, ok, error, created_at)
+		 VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, 'api_key_stored', ?, ?, NULL, ?)`
+	);
+
 	for (let i = 0; i < SAMPLE_ITEMS.length; i++) {
 		const asked = 10 + Math.floor(rnd() * 90); // $10–100
 		// Sold slightly under ask most of the time.
@@ -252,14 +263,38 @@ export function insertSampleData(): void {
 		const daysAgo = Math.floor(rnd() * rnd() * 330);
 		const soldAt = now - daysAgo * 86_400_000;
 		const createdAt = soldAt - (2 + Math.floor(rnd() * 20)) * 86_400_000;
-		stmt.run(
-			crypto.randomUUID(),
-			SAMPLE_ITEMS[i],
-			asked * 100,
-			sold * 100,
-			soldAt,
-			createdAt,
-			soldAt
+		const id = crypto.randomUUID();
+		stmt.run(id, SAMPLE_ITEMS[i], asked * 100, sold * 100, soldAt, createdAt, soldAt);
+
+		// Both stages, generated the day the listing was created. Magnitudes are
+		// the ones real runs produce: identify reads photos, pricing browses.
+		runStmt.run(
+			id,
+			'identify',
+			'claude-sonnet-5',
+			9_000 + Math.floor(rnd() * 6_000),
+			600 + Math.floor(rnd() * 500),
+			14_000 + Math.floor(rnd() * 20_000),
+			5_000 + Math.floor(rnd() * 4_000),
+			0.04 + rnd() * 0.05,
+			25_000 + Math.floor(rnd() * 30_000),
+			1,
+			createdAt
+		);
+		// Roughly one pricing run in twelve comes back unusable.
+		const priceOk = rnd() > 0.08 ? 1 : 0;
+		runStmt.run(
+			id,
+			'price',
+			'claude-opus-4-8',
+			30_000 + Math.floor(rnd() * 40_000),
+			1_800 + Math.floor(rnd() * 1_500),
+			90_000 + Math.floor(rnd() * 120_000),
+			12_000 + Math.floor(rnd() * 10_000),
+			0.35 + rnd() * 0.4,
+			150_000 + Math.floor(rnd() * 180_000),
+			priceOk,
+			createdAt + 60_000
 		);
 	}
 }

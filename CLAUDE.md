@@ -68,13 +68,53 @@ The listing page (`src/routes/listing/[id]/+page.svelte`) is the workhorse UI.
 
 6. **Progress notes depend on an undocumented SDK detail** — tool calls arrive as `tool_use`
    content blocks nested inside `assistant` messages (see `agent/run.ts`). If notes go quiet
-   after an SDK upgrade, run `dump-messages.mjs` and check whether the shape moved.
+   after an SDK upgrade, run `dump-messages.mjs` and check whether the shape moved. Token
+   usage rides on the same class of dependency: `readUsage()` picks `usage` and
+   `total_cost_usd` off the `result` message. Both read defensively and degrade to zero
+   rather than throwing — usage is cosmetic and must never take a listing's run down with
+   it — so the symptom of a shape change is a flat dashboard, not an error.
 
 7. **`agentEnv()` is passed explicitly to `query()`, not inherited.** That is what lets a key
    saved in Settings work identically to one exported by Compose. Keep the precedence in
    `auth.ts` (env → stored → OAuth) and keep it in one place — the agent must never branch on
    which source won. The env-var-wins ordering is a safety property, not a preference: without
    it, anyone who can reach the web UI of a deployed instance could repoint it at their own key.
+
+8. **Agent cost is always shown; the wording is what distinguishes a charge from an
+   estimate.** The SDK reports `total_cost_usd` for subscription runs too, where it is a
+   list-price estimate rather than a bill. That number is worth showing either way — it is
+   how you compare a plan against an API key — but labelling it "API cost" for a Pro/Max
+   user invents a charge they never received. `costKind()` in `server/usage.ts` selects the
+   copy ("API cost / billed to your API key" vs "Token value / at API rates — covered by
+   your plan"); it must never be reduced to a bare "Cost". `agent_runs.auth_mode` records
+   which credential paid each run, so when history spans a switch the tile can say how much
+   of the total was actually billed rather than presenting one number that is neither.
+
+9. **A seller who prices the item in the context box gets no price research.** Pricing is the
+   expensive stage — Opus, web search, minutes — so running it against someone who already
+   decided burns real money to produce a number that gets overwritten, and one that lands low
+   is worse than useless. The directive is read *during identify* (`price_directive` /
+   `seller_price` in `identify.ts`), where the notes and photos are already in context and it
+   costs nothing; `generate/+server.ts` then branches before stage 2 and applies
+   `sellerPricePatch()`. Resolving a *number* is strongly preferred over merely skipping —
+   `seller_set` both saves the research and fills the price in, where `no_research` leaves the
+   field empty. (That enum value is deliberately not called `skip`: sellers write "skip the
+   pricing analysis" next to a price, and an option spelled the same as their own word pulls
+   the model onto it.) `price.ts` carries the same rule as a second line of defence, for the
+   manual "Re-price only" path and for when identify misreads. Keep both: identify's copy is
+   what saves the tokens, price's is what stops a bad number. `ai_price_basis = 'seller'`
+   marks these rows, and the UI says "priced by you — no research run" — a silent skip is
+   indistinguishable from a stage that crashed.
+
+10. **`agent_runs` is a spend ledger and outlives the listings it describes.** It deliberately
+    carries no foreign key onto `listings`: a run that cost real money and produced a listing
+    you deleted is precisely the row worth seeing, and the `ON DELETE CASCADE` this table
+    shipped with erased it. Do not re-add one, and do not "clean up orphans". `listing_title`
+    is snapshotted — on insert, and again in `deleteListing()` for rows that were still null
+    because identify runs are recorded before a listing has a title. `agentUsage()` prefers the
+    live title and falls back to the snapshot. `migrateAgentRuns()` in `db.ts` rebuilds the
+    table (the FK is part of the definition, so ALTER cannot do it) and is keyed on the
+    `listing_title` column being absent.
 
 ## Conventions
 

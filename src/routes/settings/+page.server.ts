@@ -2,10 +2,18 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getSetting, setSetting } from '$lib/server/db';
 import { authStatus, clearApiKey, isValidKeyFormat, saveApiKey } from '$lib/server/auth';
-import { LIMITS, SETTING_MEETUP_NOTE } from '$lib/types';
+import {
+	LIMITS,
+	RENEW_DAYS_DEFAULT,
+	SETTING_MEETUP_NOTE,
+	SETTING_RENEW_DAYS
+} from '$lib/types';
+import { renewDays } from '$lib/server/renewals';
 
 export const load: PageServerLoad = () => ({
 	meetupNote: getSetting(SETTING_MEETUP_NOTE),
+	renewDays: renewDays(),
+	renewDaysDefault: RENEW_DAYS_DEFAULT,
 	// Masked preview only — the raw key never leaves the server.
 	auth: authStatus()
 });
@@ -33,6 +41,24 @@ export const actions: Actions = {
 
 		setSetting(SETTING_MEETUP_NOTE, meetupNote);
 		return { kind: 'meetup' as const, meetupNote, saved: true, limit: LIMITS.description };
+	},
+
+	renewals: async ({ request }) => {
+		const form = await request.formData();
+		const raw = String(form.get('renewDays') ?? '').trim();
+		const days = Number(raw);
+
+		// 0 disables reminders; the upper bound just stops a typo from silently
+		// meaning "never" when the user meant "weekly".
+		if (!Number.isInteger(days) || days < 0 || days > 365) {
+			return fail(400, {
+				kind: 'renewals' as const,
+				error: 'Enter a whole number of days between 0 and 365 (0 turns reminders off).'
+			});
+		}
+
+		setSetting(SETTING_RENEW_DAYS, String(days));
+		return { kind: 'renewals' as const, renewDays: days, saved: true };
 	},
 
 	saveKey: async ({ request }) => {

@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { deleteListing, getListing, getPhotos, updateListing } from '$lib/server/db';
-import { deletePhotoFiles } from '$lib/server/images';
+import { deletePhotoDir, deletePhotoFiles } from '$lib/server/images';
 
 export const GET: RequestHandler = ({ params }) => {
 	const listing = getListing(params.id);
@@ -24,6 +24,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	for (const photo of getPhotos(params.id)) {
 		await deletePhotoFiles(params.id, photo.filename);
 	}
+	await deletePhotoDir(params.id);
 	deleteListing(params.id);
 	return new Response(null, { status: 204 });
 };

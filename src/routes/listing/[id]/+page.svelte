@@ -3,6 +3,7 @@
 	import CopyButton from '$lib/components/CopyButton.svelte';
 	import { autogrow } from '$lib/actions/autogrow';
 	import { AVAILABILITIES, CONDITIONS, LIMITS, composeDescription, formatPrice } from '$lib/types';
+	import { compactTokens, duration } from '$lib/format';
 	import type { Listing } from '$lib/types';
 	import type { PageData } from './$types';
 
@@ -306,6 +307,16 @@
 		else saveState = 'error';
 	}
 
+	/** Reset the renewal clock after re-posting on Marketplace. The pending save is
+	 *  flushed first so a price the seller just dropped is what gets snapshotted —
+	 *  that snapshot is the whole point of recording the renewal. */
+	async function renew() {
+		await flushSave();
+		const res = await fetch(`/api/listings/${data.listing.id}/renew`, { method: 'POST' });
+		if (res.ok) await invalidateAll();
+		else saveState = 'error';
+	}
+
 	async function destroy() {
 		if (!confirm('Delete this listing and its photos? This cannot be undone.')) return;
 		const res = await fetch(`/api/listings/${data.listing.id}`, { method: 'DELETE' });
@@ -315,6 +326,14 @@
 	function thumbOf(filename: string) {
 		return filename.replace(/\.jpg$/, '_thumb.jpg');
 	}
+
+	let costNote = $derived(
+		data.costKind === 'billed'
+			? 'Billed to your API key.'
+			: data.costKind === 'mixed'
+				? `Part of this ran on an API key and part on a subscription — $${data.usage.billedCostUsd.toFixed(2)} of it was actually billed.`
+				: 'What these tokens would price at on API rates. Your Claude subscription covered them — this was never charged.'
+	);
 
 	let titleLeft = $derived(LIMITS.title - form.title.length);
 
@@ -337,6 +356,20 @@
 
 {#if data.listing.error}
 	<p class="banner">{data.listing.error}</p>
+{/if}
+
+{#if data.renewal.due}
+	<div class="renew-banner">
+		<div>
+			<strong>This listing is ready for renewal.</strong>
+			<span class="small">
+				It's been up {data.renewal.daysListed} day{data.renewal.daysListed === 1 ? '' : 's'}.
+				Marketplace stops showing listings that aren't renewed about every {data.renewDays} days.
+				Re-post it there — change the price first if it isn't moving — then mark it renewed here.
+			</span>
+		</div>
+		<button type="button" class="primary" onclick={renew}>Renew</button>
+	</div>
 {/if}
 
 <div class="columns">
@@ -396,6 +429,10 @@
 					Anything the photos don't show or you want emphasized — "the white one is sealed in box",
 					"the lid latch is cracked", a link to the original product page, "keep the description
 					short". Fed into both identify and pricing.
+				</p>
+				<p class="muted small">
+					Naming your own price here ("list it at $100") skips the price research entirely — no
+					web search, no tokens spent second-guessing you.
 				</p>
 				<textarea
 					id="context"
@@ -468,13 +505,44 @@
 					</button>
 				</div>
 			{/if}
+
+			{#if data.usage.runs > 0}
+				<!-- The asterisk marks a figure that was never charged — hovering says
+				     why. Spelling it out inline would crowd a one-line footnote. -->
+				<p class="usage small muted" title={costNote}>
+					{data.usage.runs} agent run{data.usage.runs === 1 ? '' : 's'} ·
+					{compactTokens(data.usage.totalTokens)} tokens ·
+					{duration(data.usage.durationMs)} · ${data.usage.costUsd.toFixed(2)}{data.costKind ===
+					'billed'
+						? ''
+						: '*'}
+				</p>
+			{/if}
 		</div>
 
 		<div class="status-actions">
 			<button type="button" onclick={() => setStatus('posted')}>Mark posted</button>
+			{#if data.listing.status === 'posted'}
+				<button type="button" class:primary={data.renewal.due} onclick={renew}>Renew</button>
+			{/if}
 			<button type="button" onclick={markSold}>Mark sold</button>
 			<button type="button" class="danger" onclick={destroy}>Delete</button>
 		</div>
+
+		{#if data.listing.renewal_count > 0 && data.listing.renewed_at}
+			<p class="small muted renew-history">
+				Renewed {data.listing.renewal_count}× · last on {new Date(
+					data.listing.renewed_at
+				).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+			</p>
+		{:else if data.listing.posted_at}
+			<p class="small muted renew-history">
+				Posted {new Date(data.listing.posted_at).toLocaleDateString('en-US', {
+					month: 'short',
+					day: 'numeric'
+				})}{data.renewal.daysListed != null ? ` · ${data.renewal.daysListed} days on the market` : ''}
+			</p>
+		{/if}
 	</section>
 
 	<section class="right">
@@ -510,7 +578,17 @@
 			</div>
 		</div>
 
-		{#if data.listing.ai_price_confidence}
+		{#if data.listing.ai_price_basis === 'seller'}
+			<!-- The seller priced this one themselves in the context box, so there is
+			     no research to show — only a note saying none was run, since a silent
+			     skip looks identical to a stage that failed. -->
+			<div class="price-panel">
+				<div class="price-head">
+					<span class="basis">priced by you — no research run</span>
+				</div>
+				<p class="rationale small">{data.listing.ai_rationale}</p>
+			</div>
+		{:else if data.listing.ai_price_confidence}
 			<div class="price-panel">
 				<div class="price-head">
 					<span class="range">
@@ -659,6 +737,38 @@
 		color: var(--danger);
 		border-radius: var(--radius);
 		padding: 0.6rem 0.8rem;
+	}
+
+	/* A nudge, not an error — hence --warn rather than the red error banner it
+	   sits directly beneath. */
+	.renew-banner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
+		border: 1px solid var(--warn);
+		border-left: 3px solid var(--warn);
+		border-radius: var(--radius);
+		padding: 0.6rem 0.8rem;
+		margin-bottom: 1.25rem;
+		background: var(--surface);
+	}
+
+	.renew-banner span {
+		display: block;
+		color: var(--muted);
+		margin-top: 0.15rem;
+		line-height: 1.5;
+		max-width: 62ch;
+	}
+
+	.renew-history {
+		margin: 0.5rem 0 0;
+	}
+
+	.usage {
+		margin: 0.75rem 0 0;
 	}
 
 	.columns {

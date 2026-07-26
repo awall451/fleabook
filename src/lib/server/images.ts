@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { mkdirSync } from 'node:fs';
-import { readFile, unlink } from 'node:fs/promises';
+import { readFile, rm, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { PHOTO_DIR } from './db';
 
@@ -72,4 +72,22 @@ export async function deletePhotoFiles(listingId: string, filename: string): Pro
 		unlink(path.join(dir, filename)),
 		unlink(path.join(dir, thumbName(filename)))
 	]);
+}
+
+/**
+ * Remove a deleted listing's photo directory.
+ *
+ * The files are already gone by this point — the delete route unlinks each photo
+ * individually — so this only clears the empty directory that would otherwise
+ * remain forever. Nothing reads `PHOTO_DIR` by enumeration, so a leftover is
+ * harmless; the point is that `ls data/photos` stays a truthful list of what
+ * exists, for the day someone is reading it to work out what went wrong.
+ *
+ * The id is checked against `SAFE_ID` before it reaches a recursive delete.
+ * Callers pass an id that came back from the database, but a recursive rm is
+ * worth guarding at the point of use rather than trusting every future caller.
+ */
+export async function deletePhotoDir(listingId: string): Promise<void> {
+	if (!SAFE_ID.test(listingId)) return;
+	await rm(path.join(PHOTO_DIR, listingId), { recursive: true, force: true });
 }

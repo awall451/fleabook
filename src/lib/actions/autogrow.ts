@@ -21,7 +21,13 @@ export const autogrow: Action<HTMLTextAreaElement, unknown> = (node) => {
 	requestAnimationFrame(fit);
 
 	return {
-		update: fit,
+		// Deferred, not immediate: `update` and `bind:value` are separate effects,
+		// and on a programmatic change (agent output, form reseed) this can run
+		// before the new text is in the DOM — measuring the old content and
+		// freezing the box at the wrong height until something re-triggers it.
+		// Typing is unaffected either way because the input listener fires after
+		// the value is already set.
+		update: () => requestAnimationFrame(fit),
 		destroy: () => node.removeEventListener('input', fit)
 	};
 };

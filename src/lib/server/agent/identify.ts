@@ -15,7 +15,12 @@ const IdentifySchema = z.object({
 	title: z.string().min(1).max(LIMITS.title),
 	description: z.string().min(1).max(LIMITS.description),
 	tags: z.array(z.string()).max(LIMITS.tags),
-	confidence: z.enum(['high', 'medium', 'low'])
+	confidence: z.enum(['high', 'medium', 'low']),
+	// Not listing copy — a reading of what the seller already decided about price,
+	// so the pricing stage can be skipped rather than run against their wishes.
+	// See `PRICE_DIRECTIVE_SECTION`.
+	price_directive: z.enum(['research', 'seller_set', 'no_research']),
+	seller_price: z.number().positive().nullable()
 });
 
 export type IdentifyResult = z.infer<typeof IdentifySchema>;
@@ -64,6 +69,29 @@ Treat them as authoritative. The seller has the item in hand and knows things th
 `;
 }
 
+/**
+ * Asking identify to read the seller's price decision costs nothing — the notes
+ * and the photographs are already in front of it — and it is what lets the
+ * generate flow skip a multi-minute web-research stage the seller did not want.
+ * Reading a decision back is not pricing, and the wording has to keep those
+ * apart or the stage starts estimating value on its own.
+ */
+const PRICE_DIRECTIVE_SECTION = `Separately from the listing copy, report what the seller has already decided about price.
+
+This is not you pricing the item. Do not estimate what it is worth, do not judge whether their number is right, and do not go looking for one. You are reading a decision back so that a later pricing stage is not run against the seller's wishes.
+
+  "price_directive":
+    "research"     — the seller said nothing about price. This is the default and the common case.
+    "seller_set"   — a price the seller intends to ask can be resolved from what they wrote.
+    "no_research"  — the seller declined the research but no number can be resolved.
+  "seller_price": the dollar amount the seller intends to ask, when "price_directive" is "seller_set". Null otherwise. A plain number, no currency symbol.
+
+Prefer "seller_set" whenever a number can be resolved at all. It is the far more useful answer: it both saves the research and fills the price in. "no_research" is the last resort for a seller who waved the research off and left you nothing to put in the field — and a note that declines the research *and* names a price is "seller_set", not "no_research". Read the whole note before choosing; wording like "skip the pricing" describes what the seller does not want, and says nothing about whether they gave you a number.
+
+Only the seller's own words set the number. A price printed on a receipt, a box, or a price tag is what the item cost once — not what the seller has decided to ask — so read a figure out of a photograph only when the notes send you there. If the notes give a rule instead of a number ("half what I paid") and the photographs contain the figure it refers to, do that arithmetic and report the result. Where the notes give both a number and a rule, the number is the decision.
+
+If the seller has said nothing on the subject at all, use "research". Inventing a directive silently cancels the pricing the seller was expecting.`;
+
 function buildPrompt(files: string[], userContext: string | null | undefined): string {
 	return `Photographs of one item for sale are in your working directory:
 
@@ -85,7 +113,9 @@ Return this JSON shape:
   "title": "<= ${LIMITS.title} characters. Lead with brand and model when known. No price, no emoji.",
   "description": "<= ${LIMITS.description} characters. 2-4 short paragraphs in the seller's own voice: what it is, what's included, and any genuine flaw. Plain declaratives — no 'appears to be', no 'in the photos', no sentences about what is NOT wrong. No meetup, pickup, delivery, shipping, or payment details — the seller adds those. No invented reason for selling.",
   "tags": ["up to ${LIMITS.tags} short search keywords a buyer would actually type"],
-  "confidence": "high | medium | low — how sure you are about brand and model. Internal, never shown to buyers, so rate it honestly. A generation inferred from shape alone is not high confidence."
+  "confidence": "high | medium | low — how sure you are about brand and model. Internal, never shown to buyers, so rate it honestly. A generation inferred from shape alone is not high confidence.",
+  "price_directive": "research | seller_set | no_research — see below",
+  "seller_price": 100
 }
 \`\`\`
 
@@ -93,7 +123,9 @@ The "category" value must be copied exactly from this list:
 
 ${CATEGORY_NAMES.map((c) => `  - ${c}`).join('\n')}
 
-Do not price the item.
+Do not price the item, and never put a price in the title or description.
+
+${PRICE_DIRECTIVE_SECTION}
 
 Two failure modes to avoid, both of which make a listing read as machine-written rather than seller-written:
 
@@ -121,6 +153,8 @@ export async function identifyListing(
 	if (files.length === 0) throw new Error('this listing has no photos to look at');
 
 	return runStructured(IdentifySchema, {
+		listingId,
+		stage: 'identify',
 		prompt: buildPrompt(files, userContext),
 		systemPrompt: SYSTEM_PROMPT,
 		model: 'claude-sonnet-5',

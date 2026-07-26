@@ -51,6 +51,13 @@
 					{:else}
 						<span class="muted small">no photos</span>
 					{/if}
+					{#if listing.renewal.due}
+						<!-- The whole tile is already a link to the listing, so the badge
+						     needs no handler of its own — it just has to be noticed. -->
+						<span class="renew-badge" title="Up for {listing.renewal.daysListed} days">
+							<span aria-hidden="true">⟳</span> renew
+						</span>
+					{/if}
 				</div>
 				<div class="body">
 					<div class="title">{listing.title || 'Untitled listing'}</div>
@@ -123,6 +130,7 @@
 	}
 
 	.thumb {
+		position: relative;
 		aspect-ratio: 4 / 3;
 		background: var(--surface-2);
 		display: grid;
@@ -134,6 +142,26 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+
+	/* Sits on an unknown photo, so — like the listing page's photo overlays — it
+	   carries its own contrast rather than a theme colour: an opaque amber fill
+	   and a hairline ring that survives both a dark and a blown-out subject. */
+	.renew-badge {
+		position: absolute;
+		top: 0.4rem;
+		right: 0.4rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.1rem 0.45rem;
+		border-radius: 999px;
+		background: #b26a00;
+		color: #fff;
+		box-shadow: 0 0 0 1px rgb(255 255 255 / 0.55);
+		font-size: 0.72rem;
+		font-weight: 600;
+		letter-spacing: 0.01em;
 	}
 
 	.body {

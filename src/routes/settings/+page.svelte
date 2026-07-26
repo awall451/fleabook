@@ -15,6 +15,10 @@
 	// "Saved" marker and vice versa.
 	const meetupForm = $derived(form?.kind === 'meetup' ? form : null);
 	const keyForm = $derived(form?.kind === 'apiKey' ? form : null);
+	const renewForm = $derived(form?.kind === 'renewals' ? form : null);
+
+	// svelte-ignore state_referenced_locally
+	let renewDays = $state(String(data.renewDays));
 
 	// The real value only exists in the browser; the server render shows the
 	// default and is corrected on mount.
@@ -67,6 +71,45 @@
 		<p>{meetupNote.trim()}</p>
 	</div>
 {/if}
+
+<h2>Renewal reminders</h2>
+<p class="muted small section-note">
+	Facebook Marketplace expects you to renew a listing about once a week, and a listing you forget
+	quietly stops being shown. Posted listings get a badge once they pass this many days, and the
+	listing page offers a Renew button — nothing is posted for you, it just reminds you and keeps a
+	record of the price each time.
+</p>
+
+<form method="POST" action="?/renewals" use:enhance>
+	<div class="field">
+		<label for="renewDays">Remind me after</label>
+		<div class="inline">
+			<input
+				id="renewDays"
+				name="renewDays"
+				type="number"
+				min="0"
+				max="365"
+				step="1"
+				bind:value={renewDays}
+			/>
+			<span class="muted small">days on the market (0 turns reminders off)</span>
+		</div>
+		<div class="row small muted">
+			{#if renewForm?.error}
+				<span class="error">{renewForm.error}</span>
+			{:else if renewForm?.saved}
+				<span class="ok">Saved</span>
+			{:else if Number(renewDays) === 0}
+				<span>Reminders are off.</span>
+			{:else}
+				<span>Marketplace's own cadence is {data.renewDaysDefault} days.</span>
+			{/if}
+		</div>
+	</div>
+
+	<button class="primary" type="submit">Save</button>
+</form>
 
 <h2>Claude access</h2>
 <p class="muted small section-note">
@@ -217,6 +260,16 @@
 		display: flex;
 		justify-content: space-between;
 		gap: 1rem;
+	}
+
+	.inline {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+
+	.inline input {
+		width: 5.5rem;
 	}
 
 	.error {
