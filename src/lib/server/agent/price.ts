@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import type { Listing } from '$lib/types';
 import { depreciationKeyFor } from '../categories';
-import { conditionMultiplierFor, FB_LOCAL_DISCOUNT, retentionFor } from '../depreciation';
+import {
+	conditionMultiplierFor,
+	FB_LOCAL_DISCOUNT,
+	OPEN_BOX_RETENTION,
+	retentionFor
+} from '../depreciation';
 import { listingPhotoDir } from '../images';
 import { runStructured } from './run';
 
@@ -12,6 +17,12 @@ const PriceSchema = z
 		price_high: z.number().positive(),
 		basis: z.enum(['comps', 'msrp', 'seller']),
 		msrp: z.number().positive().nullable(),
+		// Itemization for a bundle. Optional because most listings are one thing,
+		// where the single `msrp` says everything a breakdown would.
+		components: z
+			.array(z.object({ name: z.string().min(1), retail: z.number().positive() }))
+			.max(24)
+			.default([]),
 		rationale: z.string().min(1),
 		sources: z.array(z.string()).max(12),
 		confidence: z.enum(['high', 'medium', 'low'])
@@ -28,8 +39,12 @@ Your job is to find what the item actually sells for secondhand, not what it cos
 
 Read the seller's notes before you search. If they have already named the price they intend to ask, or told you not to research one, the decision is made and yours is not wanted: return their number with "basis": "seller", an empty "sources", and no searches at all. The seller knows things you do not — what they paid, what a neighbour sold one for, how fast they need it gone — and researching past them spends their money and several minutes of their time on an answer they did not ask for. Do this even when your own estimate would differ; say so in one sentence of the rationale if it would, and leave the number alone.
 
+Unused goods are a different job, and treating them like secondhand ones is the most expensive mistake you can make here. An item whose box was opened but whose contents were never used has not depreciated — nothing happened to it except the loss of a receipt and a warranty card. Do not hunt for used comparables for these; a used listing of the same model is a different product. Price them off what the same goods cost new today, less a modest open-box haircut. Spend the search budget establishing current retail, not scouring the secondhand market for a match that does not exist.
+
+A bundle is priced by itemizing it, never by eyeballing it. Look at every photograph and name every distinct item, then find current retail for each and add them up. Lumping the tail into one guess — "wire and accessories ~$15" — is where these go wrong, because the tail is routinely half the value: a heavy-gauge extension cord, a spool of wire, and a pair of gloves can each be worth more than the guess covering all three. If you cannot find a price for something, estimate it and say so, but give it a line of its own. An itemized total the seller can check beats a confident single number they cannot.
+
 Weigh evidence honestly:
-- Real used comparables beat any depreciation formula. A formula is a guess about the market; comparables are the market.
+- Real used comparables beat any depreciation formula, for genuinely used goods. A formula is a guess about the market; comparables are the market.
 - Web search reaches ASKING prices far more easily than SOLD prices, and asking prices run high — sellers start optimistic and negotiate down. Adjust for that gap rather than treating an asking price as a sale.
 - Ignore listings for a different model, a different capacity, or obviously different condition. Two comparables you trust are worth more than eight you do not.
 
@@ -65,15 +80,22 @@ Photographs of the actual item are in your working directory if you need to chec
 Work in this order:
 
 0. If a price the seller intends to ask can be resolved from their notes — stated outright, or given as a rule against a figure in the photographs ("half what I paid") — stop here: return that number as "suggested", "price_low", and "price_high" alike, with "basis": "seller" and "sources": []. Skip every step below. If they waved the research off but left no number you can resolve, they have asked for one anyway by reaching this stage: price it normally.
-1. Search for USED comparables — this same item, or the closest equivalent, listed secondhand. Note the prices you find and whether each is an asking price or a completed sale.
-2. Search for the ORIGINAL retail price or MSRP, as an anchor for step 4.
-3. If you found at least three comparables you trust, set "basis" to "comps" and build the range from them.
-4. Otherwise set "basis" to "msrp" and estimate from retail using this reference:
-     retail price
+1. Take stock of what is actually being sold. If the photographs and description show several distinct items, list them — every one, down to the consumables. Fill "components" with a line per item, and let that list drive everything below.
+2. Establish CURRENT RETAIL for each item: what it costs to buy new today, from the manufacturer or a mainstream retailer. Set "msrp" to the total across every item, not the price of the headline one. For a bundle that total is the number the seller most needs; reporting the flagship item's price alone understates a kit by more than any other error you can make.
+${
+	listing.condition === 'New'
+		? `3. This item is listed as New, so stop there — do not search for used comparables and do not run the depreciation curve. Set "basis" to "msrp" and price from the retail total:
+     retail total
+       x ${OPEN_BOX_RETENTION}   (open-box haircut: unused goods, opened packaging, no receipt or warranty)
+   Never-used goods do not carry a used item's depreciation. If a note or a photograph shows one part of the bundle genuinely was used, deduct for that part specifically and say which, rather than marking the whole lot down.`
+		: `3. Search for USED comparables — this same item, or the closest equivalent, listed secondhand. Note the prices you find and whether each is an asking price or a completed sale. If you found at least three you trust, set "basis" to "comps" and build the range from them.
+4. Otherwise set "basis" to "msrp" and estimate from the retail total using this reference:
+     retail total
        x ${retention}   (typical retention for ${listing.category ?? 'this category'} in Used - Good condition)
-       x ${multiplier}   (adjustment for "${listing.condition ?? 'unknown'}")
+       x ${multiplier}   (adjustment for "${listing.condition ?? 'unknown'}")`
+}
 5. Either way, multiply the result by ${FB_LOCAL_DISCOUNT} for Facebook Marketplace: local cash pickup, no shipping, no buyer protection, and a buyer who came out expecting a deal.
-6. Widen the range if the evidence was thin, and lower "confidence" to match.
+6. Widen the range if the evidence was thin, and lower "confidence" to match. Confidence describes the evidence, not the arithmetic: a retail total you verified item by item is high confidence even though no comparable was involved.
 
 Return:
 
@@ -84,13 +106,19 @@ Return:
   "price_high": 100,
   "basis": "comps",
   "msrp": 199,
+  "components": [
+    { "name": "each distinct item in the listing, named as a buyer would recognise it", "retail": 150 },
+    { "name": "keep going — the small stuff is where the value hides", "retail": 22 }
+  ],
   "rationale": "2-4 sentences: what you found, which comparables you used or why you fell back to retail, and how you landed on the number. Name the actual prices you saw.",
   "sources": ["https://... urls you actually opened"],
   "confidence": "high | medium | low"
 }
 \`\`\`
 
-All prices are whole US dollars. "suggested" must sit between "price_low" and "price_high". Set "msrp" to null if you could not find a retail price. Only list URLs you actually visited.`;
+All prices are whole US dollars. "suggested" must sit between "price_low" and "price_high". Set "msrp" to null if you could not find a retail price. Only list URLs you actually visited.
+
+Leave "components" as an empty array when the listing is a single item — the one "msrp" figure already says everything a breakdown would. Fill it whenever there is more than one thing in the box, and make the retail figures sum to "msrp".`;
 }
 
 export async function priceListing(
@@ -132,6 +160,7 @@ export function sellerPricePatch(sellerPrice: number | null) {
 		ai_price_high: null,
 		ai_price_basis: 'seller',
 		ai_msrp_cents: null,
+		ai_components: [],
 		ai_rationale:
 			cents != null
 				? 'You set this price in the context box, so no price research was run.'
@@ -150,6 +179,10 @@ export function pricePatch(result: PriceResult) {
 		ai_price_high: Math.round(result.price_high * 100),
 		ai_price_basis: result.basis,
 		ai_msrp_cents: result.msrp != null ? Math.round(result.msrp * 100) : null,
+		ai_components: result.components.map((c) => ({
+			name: c.name,
+			retail_cents: Math.round(c.retail * 100)
+		})),
 		ai_rationale: result.rationale,
 		ai_sources: result.sources,
 		ai_price_confidence: result.confidence,

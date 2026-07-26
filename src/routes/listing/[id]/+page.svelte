@@ -601,7 +601,24 @@
 				</div>
 
 				{#if data.listing.ai_msrp_cents}
-					<div class="small muted">Original retail around ${formatPrice(data.listing.ai_msrp_cents)}</div>
+					<div class="small muted">
+						{data.listing.ai_components.length > 0 ? 'Retail if bought new today' : 'Original retail'}
+						around ${formatPrice(data.listing.ai_msrp_cents)}
+					</div>
+				{/if}
+
+				<!-- The itemization for a bundle. Worth the space: a single retail figure
+				     for a box of ten things is unverifiable, and the tail is where these
+				     estimates go wrong — the accessories are routinely half the value. -->
+				{#if data.listing.ai_components.length > 0}
+					<ul class="components small">
+						{#each data.listing.ai_components as part (part.name)}
+							<li>
+								<span class="cname">{part.name}</span>
+								<span class="cprice">${formatPrice(part.retail_cents)}</span>
+							</li>
+						{/each}
+					</ul>
 				{/if}
 
 				<p class="rationale small">{data.listing.ai_rationale}</p>
@@ -1081,6 +1098,29 @@
 	.rationale {
 		margin: 0.5rem 0 0;
 		line-height: 1.55;
+	}
+
+	.components {
+		list-style: none;
+		margin: 0.5rem 0 0;
+		padding: 0;
+	}
+
+	.components li {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.15rem 0;
+		border-bottom: 1px dotted var(--border);
+	}
+
+	.components .cname {
+		color: var(--muted);
+	}
+
+	.components .cprice {
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
 	.sources {

@@ -40,6 +40,22 @@ export const CONDITION_MULTIPLIER: Record<string, number> = {
  */
 export const FB_LOCAL_DISCOUNT = 0.875;
 
+/**
+ * Fraction of current retail retained by unused goods whose box has been opened.
+ *
+ * The used-goods curve above does not apply to these and using it is a large,
+ * one-directional error: `power_tools` retention (0.55) even at the "New"
+ * multiplier (1.35) prices an unused, never-run tool at 74% of retail, as if
+ * ownership itself consumed a quarter of its value. It did not — the only thing
+ * that happened to this item is that a box was opened, and the buyer is getting
+ * exactly what the store sells, minus the receipt and the warranty paperwork.
+ *
+ * So the "New" path prices off retail directly with this haircut instead of
+ * running the depreciation chain. Tune this number, not the curve above, if
+ * open-box listings read wrong.
+ */
+export const OPEN_BOX_RETENTION = 0.9;
+
 export function retentionFor(depreciationKey: string): number {
 	return RETENTION[depreciationKey] ?? RETENTION.default;
 }

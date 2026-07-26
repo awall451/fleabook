@@ -1,7 +1,15 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { AgentRun, AgentStage, Listing, ListingEvent, Photo, Status } from '$lib/types';
+import type {
+	AgentRun,
+	AgentStage,
+	Listing,
+	ListingEvent,
+	Photo,
+	PriceComponent,
+	Status
+} from '$lib/types';
 
 export const DATA_DIR = process.env.DATA_DIR ?? path.resolve('data');
 export const PHOTO_DIR = path.join(DATA_DIR, 'photos');
@@ -35,6 +43,9 @@ CREATE TABLE IF NOT EXISTS listings (
   ai_price_high   INTEGER,
   ai_price_basis  TEXT,
   ai_msrp_cents   INTEGER,
+  -- JSON [{name, retail_cents}] itemizing a bundle's retail. Empty for a
+  -- single-item listing.
+  ai_components   TEXT NOT NULL DEFAULT '[]',
   ai_rationale    TEXT,
   ai_sources      TEXT NOT NULL DEFAULT '[]',
   ai_price_confidence TEXT,
@@ -180,6 +191,9 @@ function migrate(handle: DatabaseSync): void {
 	if (!columns.has('renewal_count')) {
 		handle.exec('ALTER TABLE listings ADD COLUMN renewal_count INTEGER NOT NULL DEFAULT 0');
 	}
+	if (!columns.has('ai_components')) {
+		handle.exec("ALTER TABLE listings ADD COLUMN ai_components TEXT NOT NULL DEFAULT '[]'");
+	}
 
 	migrateAgentRuns(handle);
 }
@@ -255,6 +269,25 @@ function jsonArray(raw: unknown): string[] {
 	}
 }
 
+/** Parse the bundle breakdown, dropping any entry that is not a usable
+ *  {name, retail_cents} pair — a malformed row should cost the panel one line,
+ *  not the whole listing. */
+function jsonComponents(raw: unknown): PriceComponent[] {
+	if (typeof raw !== 'string' || raw === '') return [];
+	try {
+		const parsed = JSON.parse(raw);
+		if (!Array.isArray(parsed)) return [];
+		return parsed
+			.filter(
+				(c): c is PriceComponent =>
+					c != null && typeof c.name === 'string' && typeof c.retail_cents === 'number'
+			)
+			.map((c) => ({ name: c.name, retail_cents: c.retail_cents }));
+	} catch {
+		return [];
+	}
+}
+
 function toListing(row: Record<string, unknown>): Listing {
 	return {
 		id: row.id as string,
@@ -279,6 +312,7 @@ function toListing(row: Record<string, unknown>): Listing {
 		ai_price_high: (row.ai_price_high as number) ?? null,
 		ai_price_basis: (row.ai_price_basis as Listing['ai_price_basis']) ?? null,
 		ai_msrp_cents: (row.ai_msrp_cents as number) ?? null,
+		ai_components: jsonComponents(row.ai_components),
 		ai_rationale: (row.ai_rationale as string) ?? null,
 		ai_sources: jsonArray(row.ai_sources),
 		ai_price_confidence: (row.ai_price_confidence as Listing['ai_price_confidence']) ?? null,
@@ -389,12 +423,13 @@ const AGENT_WRITABLE = new Set([
 	'ai_price_high',
 	'ai_price_basis',
 	'ai_msrp_cents',
+	'ai_components',
 	'ai_rationale',
 	'ai_sources',
 	'ai_price_confidence'
 ]);
 
-const JSON_COLUMNS = new Set(['tags', 'ai_flaws', 'ai_sources']);
+const JSON_COLUMNS = new Set(['tags', 'ai_flaws', 'ai_sources', 'ai_components']);
 
 export function updateListing(
 	id: string,

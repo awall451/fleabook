@@ -24,6 +24,15 @@ export type Confidence = 'high' | 'medium' | 'low';
  *  stated in the context box — and no research was run. */
 export type PriceBasis = 'comps' | 'msrp' | 'seller';
 
+/**
+ * One line of a bundle's retail breakdown. Empty for a single-item listing,
+ * where the one MSRP figure says everything a breakdown would.
+ */
+export interface PriceComponent {
+	name: string;
+	retail_cents: number;
+}
+
 /** Facebook's own limits — enforced in the UI so a copied field never gets truncated. */
 export const LIMITS = {
 	title: 100,
@@ -104,6 +113,8 @@ export interface Listing {
 	ai_price_high: number | null;
 	ai_price_basis: PriceBasis | null;
 	ai_msrp_cents: number | null;
+	/** Per-item retail for a bundle, summing to `ai_msrp_cents`. */
+	ai_components: PriceComponent[];
 	ai_rationale: string | null;
 	ai_sources: string[];
 	ai_price_confidence: Confidence | null;
