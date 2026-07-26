@@ -12,6 +12,14 @@ export const STATUSES = [
 ] as const;
 export type Status = (typeof STATUSES)[number];
 
+/**
+ * The listings-grid filter that is not a status: posted listings past their
+ * renewal clock. It lives beside `STATUSES` because it sits in the same row of
+ * chips and the same `?status=` parameter, but nothing ever writes it to the
+ * database — it is derived per request from `renewalStatus`.
+ */
+export const RENEW_DUE = 'renew-due';
+
 /** Verbatim Facebook Marketplace condition values. Do not reword. */
 export const CONDITIONS = ['New', 'Used - Like New', 'Used - Good', 'Used - Fair'] as const;
 export type Condition = (typeof CONDITIONS)[number];

@@ -1,11 +1,59 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
-	import { formatPrice, STATUSES } from '$lib/types';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { formatPrice, RENEW_DUE, STATUSES } from '$lib/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	const filters = ['all', ...STATUSES];
+	let filters = $derived(
+		data.remindersOn ? ['all', RENEW_DUE, ...STATUSES] : ['all', ...STATUSES]
+	);
+
+	function label(filter: string): string {
+		return filter === RENEW_DUE ? 'renew due' : filter;
+	}
+
+	/** A chip's URL keeps the current search — narrowing by status and searching
+	 *  are different questions, and clicking one should not discard the other. */
+	function chipHref(filter: string): string {
+		const params = new URLSearchParams();
+		if (filter !== 'all') params.set('status', filter);
+		if (data.query) params.set('q', data.query);
+		const qs = params.toString();
+		return qs ? `/?${qs}` : '/';
+	}
+
+	// Search is bound to the URL rather than to local state so a result list can
+	// be linked, reloaded, and stepped back through. Debounced because every
+	// keystroke is otherwise a server round-trip.
+	let search = $state('');
+	let seeded = $state(false);
+	$effect(() => {
+		// Seed once from the URL; after that the input is the source of truth and
+		// re-seeding would fight the user mid-keystroke.
+		if (seeded) return;
+		search = data.query;
+		seeded = true;
+	});
+
+	let searchTimer: ReturnType<typeof setTimeout> | undefined;
+	function onSearch() {
+		clearTimeout(searchTimer);
+		searchTimer = setTimeout(() => {
+			const params = new URLSearchParams();
+			if (data.status !== 'all') params.set('status', data.status);
+			if (search.trim()) params.set('q', search.trim());
+			const qs = params.toString();
+			// keepFocus so typing is uninterrupted; replaceState so a search does not
+			// bury the previous page under one history entry per keystroke.
+			goto(qs ? `/?${qs}` : '/', { keepFocus: true, noScroll: true, replaceState: true });
+		}, 200);
+	}
+
+	function clearSearch() {
+		search = '';
+		onSearch();
+	}
 
 	// A listing carries one of these while an agent stage is running on the
 	// server. The status is written when the stage starts and cleared when it
@@ -27,19 +75,48 @@
 	});
 </script>
 
-<div class="filters">
-	{#each filters as filter (filter)}
-		<a
-			class="chip"
-			class:active={data.status === filter}
-			href={filter === 'all' ? '/' : `/?status=${filter}`}>{filter}</a
-		>
-	{/each}
+<div class="toolbar">
+	<div class="search">
+		<input
+			type="search"
+			placeholder="Search titles, brands, tags…"
+			aria-label="Search listings"
+			bind:value={search}
+			oninput={onSearch}
+		/>
+		{#if search}
+			<button type="button" class="clear" onclick={clearSearch} aria-label="Clear search">×</button>
+		{/if}
+	</div>
+
+	<div class="filters">
+		{#each filters as filter (filter)}
+			{@const count = data.counts[filter] ?? 0}
+			{#if count === 0 && data.status !== filter}
+				<!-- Nothing to show behind it, so it reads as a label rather than a
+				     control. Left in place instead of hidden: a bar that reshuffles as
+				     work moves through it is harder to aim at than a stable one. -->
+				<span class="chip empty-chip">{label(filter)} <span class="count">0</span></span>
+			{:else}
+				<a class="chip" class:active={data.status === filter} href={chipHref(filter)}>
+					{label(filter)}
+					<span class="count">{count}</span>
+				</a>
+			{/if}
+		{/each}
+	</div>
 </div>
 
 {#if data.listings.length === 0}
 	<p class="empty muted">
-		Nothing here yet. <a href="/new">Upload some photos</a> to start a listing.
+		{#if data.query}
+			No listings match <strong>{data.query}</strong>.
+			<button type="button" class="linklike" onclick={clearSearch}>Clear the search</button>
+		{:else if data.status !== 'all'}
+			Nothing is {label(data.status)} right now. <a href={chipHref('all')}>Show everything</a>.
+		{:else}
+			Nothing here yet. <a href="/new">Upload some photos</a> to start a listing.
+		{/if}
 	</p>
 {:else}
 	<div class="grid">
@@ -81,14 +158,54 @@
 {/if}
 
 <style>
+	.toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1.25rem;
+	}
+
+	.search {
+		position: relative;
+		flex: 1 1 16rem;
+		max-width: 22rem;
+	}
+
+	.search input {
+		padding-right: 2rem;
+	}
+
+	/* The native search-field clear button only exists in some browsers, so the
+	   affordance is provided here rather than assumed. */
+	.search .clear {
+		position: absolute;
+		right: 0.35rem;
+		top: 50%;
+		transform: translateY(-50%);
+		border: 0;
+		background: none;
+		color: var(--muted);
+		font-size: 1.1rem;
+		line-height: 1;
+		padding: 0.15rem 0.35rem;
+		cursor: pointer;
+	}
+
+	.search input::-webkit-search-cancel-button {
+		display: none;
+	}
+
 	.filters {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.4rem;
-		margin-bottom: 1.25rem;
 	}
 
 	.chip {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.3rem;
 		font-size: 0.8rem;
 		text-decoration: none;
 		color: var(--muted);
@@ -101,6 +218,29 @@
 		background: var(--accent);
 		color: var(--accent-text);
 		border-color: transparent;
+	}
+
+	.count {
+		font-variant-numeric: tabular-nums;
+		font-size: 0.72rem;
+		opacity: 0.75;
+	}
+
+	/* Reachable-but-empty. Faded rather than removed, and not a link, so the row
+	   stays in one place while the numbers move. */
+	.empty-chip {
+		opacity: 0.4;
+		cursor: default;
+	}
+
+	.linklike {
+		border: 0;
+		background: none;
+		padding: 0;
+		color: var(--accent);
+		text-decoration: underline;
+		cursor: pointer;
+		font: inherit;
 	}
 
 	.empty {
