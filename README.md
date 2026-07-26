@@ -89,8 +89,12 @@ npm run dev
 
 ### Windows
 
-Windows runs the app natively — no WSL, no Docker. Download the release zip, unzip it, and
-double-click `Fleabook.exe`; it starts the same server on the same port and opens your browser.
+Windows runs the app natively — no WSL, no Docker. Download
+**[the latest release zip](https://github.com/awall451/fleabook/releases/latest)** (~165 MB —
+most of it is the bundled Node runtime and the Claude Code binary the Agent SDK ships), unzip
+it, and double-click `Fleabook.exe`; it starts the same server on the same port and opens your
+browser. Note that GitHub's green *Code → Download ZIP* button gives you the source, not the
+app — the executable only comes from a release.
 Listings and photos live in `%LOCALAPPDATA%\Fleabook\data`, not in the program folder, so
 replacing the app on upgrade never touches them.
 
