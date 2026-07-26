@@ -18,18 +18,25 @@ Local-only, runs in Docker, authenticates with your own Claude subscription.
 ## Screenshots
 
 **The listing workspace** — drop in photos, get every Facebook field with a copy button, plus
-price research that shows its comparables and reasoning:
+price research that shows its working. A bundle is itemized line by line, so the estimate is
+something you can check rather than a number you have to trust:
 
 ![Listing detail](docs/screenshots/listing.png)
 
-**Dashboard** — total earned, monthly trend, listings by status, and a GitHub-style
-selling-streak heatmap (shown with sample data):
-
-![Dashboard](docs/screenshots/dashboard.png)
-
-**Your drafts at a glance:**
+**Your listings at a glance** — every status chip carries its count, so you can see where the
+work is instead of clicking through empty filters. Search covers titles, brands, models and tags:
 
 ![Listings grid](docs/screenshots/grid.png)
+
+**Or as rows**, sorted by price, days listed, or title — each one expanding in place to show the
+estimate, the retail anchor and the renewal history:
+
+![Listings in row view](docs/screenshots/rows.png)
+
+**Dashboard** — total earned, monthly trend, listings by status, a GitHub-style selling-streak
+heatmap, and what the agent spent per listing (shown with sample data):
+
+![Dashboard](docs/screenshots/dashboard.png)
 
 ---
 
