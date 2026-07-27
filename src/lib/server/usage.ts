@@ -1,5 +1,5 @@
 import { db, toAgentRun } from './db';
-import { authStatus } from './auth';
+import { authMode } from './auth';
 import type { AgentRun, AgentStage } from '$lib/types';
 
 /**
@@ -24,7 +24,7 @@ const BILLED_MODES = new Set(['api_key_env', 'api_key_stored']);
 export function costKind(runs: AgentRun[]): CostKind {
 	// With nothing recorded there is no history to describe, so fall back to what
 	// the next run will be — the panel is showing zeroes either way.
-	if (runs.length === 0) return BILLED_MODES.has(authStatus().mode) ? 'billed' : 'estimated';
+	if (runs.length === 0) return BILLED_MODES.has(authMode()) ? 'billed' : 'estimated';
 
 	const billed = runs.filter((r) => BILLED_MODES.has(r.auth_mode)).length;
 	if (billed === runs.length) return 'billed';

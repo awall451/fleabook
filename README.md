@@ -107,6 +107,12 @@ Listings and photos live in `%LOCALAPPDATA%\Fleabook\data`, not in the program f
 upgrading or uninstalling never touches them (the uninstaller asks separately, and defaults to
 keeping them).
 
+Connect it to Claude from **Settings**, which handles both options without a command prompt:
+*Sign in with Claude* for a subscription (a browser page opens; paste the code it returns), or
+an API key in the box below it. Note that signing in to the separate **Claude desktop app does
+not sign in Fleabook** — the two keep credentials in different places, so the in-app sign-in is
+required even on a machine where that app is already logged in.
+
 To build the package yourself, from Linux or Windows:
 
 ```sh

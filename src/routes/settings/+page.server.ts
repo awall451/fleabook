@@ -10,12 +10,15 @@ import {
 } from '$lib/types';
 import { renewDays } from '$lib/server/renewals';
 
-export const load: PageServerLoad = () => ({
+export const load: PageServerLoad = async () => ({
 	meetupNote: getSetting(SETTING_MEETUP_NOTE),
 	renewDays: renewDays(),
 	renewDaysDefault: RENEW_DAYS_DEFAULT,
+	// Awaited rather than streamed: the page's first decision is which of the two
+	// credential routes to offer, and a badge that arrives late would flip from
+	// "not set up" to "signed in" under the user's cursor.
 	// Masked preview only — the raw key never leaves the server.
-	auth: authStatus()
+	auth: await authStatus()
 });
 
 /**

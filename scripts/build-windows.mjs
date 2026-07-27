@@ -235,14 +235,21 @@ falls back to opening in your browser and tells you so.
 Connecting it to Claude
 -----------------------
 
-Fleabook writes your listings with Claude, so it needs one of these:
+Fleabook writes your listings with Claude, so it needs one of these. Open
+Settings inside Fleabook and set up whichever you have - both are done from
+that page, and neither needs a command prompt.
 
-  - A Claude subscription. Install the Claude Code app and sign in once.
-    Fleabook picks that up automatically and there is nothing extra to pay.
+  - A Claude subscription. Choose "Sign in with Claude". A sign-in page opens
+    in your browser; approve it, then paste the code it gives you back into
+    Fleabook. Nothing extra to pay.
 
-  - An Anthropic API key. Open Settings inside Fleabook and follow the
-    instructions there. You add credits up front and each listing costs a
-    small amount. No subscription needed.
+    Signing in to the separate Claude desktop app does NOT sign in Fleabook.
+    The two keep their sign-ins apart, so do this one here even if that app
+    already knows who you are.
+
+  - An Anthropic API key. Paste it into the box on the same page. You add
+    credits up front and each listing costs a small amount. No subscription
+    needed.
 
 Where your data lives
 ---------------------

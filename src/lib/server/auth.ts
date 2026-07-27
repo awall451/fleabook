@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { getSetting, setSetting } from './db';
+import { cliAuthStatus } from './claudeCli';
 import { SETTING_API_KEY } from '$lib/types';
 
 /**
@@ -36,6 +37,14 @@ export interface AuthStatus {
 	storedKeyPreview: string;
 	/** True when the env var is set, which makes the stored key inert. */
 	envKeyOverrides: boolean;
+	/** Who the CLI says is signed in — shown so a wrong account is visible. */
+	account?: string;
+	/**
+	 * True when the sign-in question could not be answered at all (the CLI is
+	 * missing, or did not reply). Distinct from a confident "not signed in":
+	 * the UI must not offer to fix something it cannot see.
+	 */
+	signInUnknown?: boolean;
 }
 
 /**
@@ -47,7 +56,8 @@ export interface AuthStatus {
  */
 const KEY_PREFIX = 'sk-ant-';
 
-function envKey(): string {
+/** Exported so the sign-in route can refuse when an operator key is in force. */
+export function envKey(): string {
 	return (process.env.ANTHROPIC_API_KEY ?? '').trim();
 }
 
@@ -94,20 +104,36 @@ export function agentEnv(): Record<string, string | undefined> {
 }
 
 /**
- * Best-effort check for stored Claude Code credentials.
+ * Which credential is in play, cheaply.
  *
- * On Linux and Windows the CLI writes `.credentials.json` under the config
- * directory, so its presence is a reliable signal. macOS keeps them in the
- * Keychain instead — hence `unknown` rather than a confident "not signed in"
- * when the file is missing. Reporting a working setup as broken is the worse
- * failure here.
+ * Split out from `authStatus()` because the two have incompatible costs. This
+ * one is called per agent run to stamp the spend ledger (invariant 10) and by
+ * `costKind()` to pick the cost wording (invariant 8) — hot paths that must stay
+ * synchronous. `authStatus()` asks the CLI, which means spawning a 260MB binary;
+ * doing that on every run would be indefensible for a field nothing reads back.
+ *
+ * The subscription branch here is therefore still a heuristic: the presence of
+ * `.credentials.json` under the config dir. That is a weaker signal than the CLI
+ * (see `authStatus()`), but it is the right trade for a ledger stamp — the
+ * question it answers is "did an API key pay for this run", and the absence of a
+ * key is a complete answer to that regardless of which OAuth store was used.
  */
-function hasOAuthCredentials(): boolean {
+export function authMode(): AuthMode {
+	if (envKey()) return 'api_key_env';
+	if (storedApiKey()) return 'api_key_stored';
+
 	const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), '.claude');
-	return existsSync(path.join(configDir, '.credentials.json'));
+	return existsSync(path.join(configDir, '.credentials.json')) ? 'subscription' : 'unknown';
 }
 
-export function authStatus(): AuthStatus {
+/**
+ * The full picture, for the settings page only.
+ *
+ * Asks the CLI whether it is signed in, which costs a process spawn — acceptable
+ * on a page a user opens deliberately, not on a hot path. Use `authMode()`
+ * anywhere that needs only the credential in play.
+ */
+export async function authStatus(): Promise<AuthStatus> {
 	const stored = storedApiKey();
 	const fromEnv = envKey();
 
@@ -131,20 +157,62 @@ export function authStatus(): AuthStatus {
 		};
 	}
 
-	if (hasOAuthCredentials()) {
+	// Ask the CLI that will actually run the work, rather than inferring from a
+	// file on disk. The previous check looked for `.credentials.json` under the
+	// config dir and called its presence proof — which reported "signed in" for
+	// anyone whose credentials lived elsewhere, and, worse, reported "not signed
+	// in" for the Claude desktop app, which shares that directory for its data
+	// but keeps its token somewhere the SDK cannot read. The result was a
+	// settings page insisting the machine was ready while every run failed with
+	// an API error. `claude auth status --json` is answered by the same binary
+	// the SDK spawns, so agreement is structural rather than hopeful.
+	const cli = await cliAuthStatus(agentEnv());
+
+	if (cli?.loggedIn) {
+		// Personal accounts get an auto-named organisation ("<email>'s Organization"),
+		// which alongside the email reads as a stutter rather than as information.
+		// It is worth showing only when it names something the email does not.
+		const email = cli.email ?? '';
+		const org = cli.orgName ?? '';
+		const redundant = !org || (email && org.includes(email));
+		const account = redundant ? email : [email, org].filter(Boolean).join(' · ');
+
+		// The CLI reports the plan lowercase ("pro", "max"); it is a proper noun here.
+		const plan = cli.subscriptionType
+			? cli.subscriptionType.charAt(0).toUpperCase() + cli.subscriptionType.slice(1)
+			: '';
+
 		return {
 			mode: 'subscription',
-			summary: 'Using your Claude subscription — no API key needed, nothing extra to pay.',
+			summary: plan
+				? `Using your Claude ${plan} subscription — nothing extra to pay.`
+				: 'Using your Claude subscription — no API key needed, nothing extra to pay.',
 			hasStoredKey: false,
 			storedKeyPreview: '',
-			envKeyOverrides: false
+			envKeyOverrides: false,
+			account: account || undefined
+		};
+	}
+
+	// A null answer is not a "no". The CLI may be missing or may have failed to
+	// run, and offering a sign-in button that cannot work is worse than saying
+	// so plainly.
+	if (cli === null) {
+		return {
+			mode: 'unknown',
+			summary:
+				'Fleabook could not check whether this computer is signed in to Claude. Add an API key below, or reinstall Fleabook if this persists.',
+			hasStoredKey: false,
+			storedKeyPreview: '',
+			envKeyOverrides: false,
+			signInUnknown: true
 		};
 	}
 
 	return {
 		mode: 'unknown',
 		summary:
-			'No API key saved and no Claude Code sign-in found. Either sign in with the Claude Code app, or add an API key below.',
+			'Not signed in yet. Sign in with your Claude subscription below, or add an API key instead.',
 		hasStoredKey: false,
 		storedKeyPreview: '',
 		envKeyOverrides: false

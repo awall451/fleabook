@@ -151,6 +151,41 @@ The listing page (`src/routes/listing/[id]/+page.svelte`) is the workhorse UI.
     launcher's job object is what takes the server down with it, so invariant 5's reconciliation
     and this both depend on that job object surviving.
 
+14. **The bundled `claude.exe` must never update itself.** It is a pinned dependency inside the
+    app folder, and its updater does not know that: it renames the running binary to
+    `claude.exe.old.<epoch>`, and when the replacement fails to land the folder is left with no
+    `claude.exe` at all. Every run then dies with *"Native CLI binary for win32-x64 not found.
+    Reinstall @anthropic-ai/claude-agent-sdk without --omit=optional"* — advice naming a package
+    manager the machine does not have, for a package the user never installed. `DISABLE_AUTOUPDATER=1`
+    in the launcher's environment (`main.go`) prevents it; `restoreAgentBinary()` repairs a copy
+    already in that state, because installs predating the flag exist in the wild. The repair is
+    deliberately narrow — one candidate and no live binary, or it does nothing.
+
+15. **Sign-in state is a question for the CLI, not for the filesystem.** `authStatus()` runs
+    `claude auth status --json` against the same binary the SDK spawns, so what Settings claims
+    and what a run does cannot disagree. The check it replaced looked for `.credentials.json`
+    under the config dir and treated its presence as proof — which was wrong in the direction
+    that costs the most: the **Claude desktop app shares that directory but stores its token
+    elsewhere**, so a user signed into it saw "Subscription", then watched every listing fail
+    with `api_error`. Never reintroduce a file-existence check here. `null` from the CLI means
+    *unanswered* (missing binary, timeout) and must stay distinct from a confident "not signed
+    in" — the UI offers to fix only the latter. `authMode()` is the cheap synchronous sibling
+    for the ledger and cost wording (invariants 8 and 10); it keeps the file heuristic on
+    purpose, because "did an API key pay for this" is fully answered by the absence of a key,
+    and spawning a 260MB binary per run to stamp a column would not be.
+
+16. **Sign-in is driven through the CLI's pipes, and the browser half stays in a real browser.**
+    `claude auth login --claudeai` writes an authorisation URL to stdout and then blocks reading
+    a code from stdin — plain pipes, no pty, which is the only reason a web UI can drive it. It
+    prints **nothing** if stdin is closed at spawn, so the pipe is held open long before anything
+    is written to it; that is not an oversight. The child outlives the request that started it
+    (start and code-submit are separate requests), so it is held in module state, one at a time.
+    The URL is opened in the system browser rather than in-window on purpose: the Windows build
+    is a WebView2 window with no address bar, and a chromeless page asking for account
+    credentials is indistinguishable from a phishing screen. The route refuses outright when
+    `ANTHROPIC_API_KEY` is set — under invariant 7 the env key wins anyway, so signing in could
+    only leave an unused token on a shared host.
+
 ## Conventions
 
 - **Keep it dependency-light.** SQLite is `node:sqlite` (no native build); charts are hand-rolled

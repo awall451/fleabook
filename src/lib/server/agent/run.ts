@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { ZodType } from 'zod';
-import { agentEnv, authStatus } from '$lib/server/auth';
+import { agentEnv, authMode } from '$lib/server/auth';
 import { recordAgentRun } from '$lib/server/db';
 import type { AgentStage } from '$lib/types';
 
@@ -208,10 +208,19 @@ async function runOnce(spec: RunSpec, usage: RunUsage[]): Promise<string> {
 			usage.push(readUsage(m));
 			if (typeof m.result === 'string') result = m.result;
 			if (m.is_error || (typeof m.subtype === 'string' && m.subtype !== 'success')) {
+				// `result` carries the API's own message on a failed run — an expired
+				// token, an empty credit balance, a refused model. Without it the user
+				// gets a category ("api_error") where they needed a cause, and the
+				// launcher's log does not have it either: this path never reaches
+				// stderr. Report the cause first and keep the codes as a suffix, since
+				// they are what makes a bug report searchable.
+				const cause = result.trim();
+				const codes = [m.subtype, m.terminal_reason].filter(
+					(c) => typeof c === 'string' && c && c !== 'success'
+				);
+				const detail = codes.length > 0 ? ` (${codes.join(': ')})` : '';
 				throw new Error(
-					`the agent stopped early (${m.subtype ?? 'error'}${
-						m.terminal_reason ? `: ${m.terminal_reason}` : ''
-					})`
+					cause ? `the agent stopped early: ${cause}${detail}` : `the agent stopped early${detail}`
 				);
 			}
 		}
@@ -316,7 +325,7 @@ function record(spec: RunSpec, usage: RunUsage[], startedAt: number, error: stri
 			cache_read_tokens: total.cacheReadTokens,
 			cache_creation_tokens: total.cacheCreationTokens,
 			cost_usd: total.costUsd,
-			auth_mode: authStatus().mode,
+			auth_mode: authMode(),
 			duration_ms: Date.now() - startedAt,
 			ok: error === null,
 			error

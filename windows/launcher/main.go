@@ -91,6 +91,7 @@ func run() error {
 		return err
 	}
 	logf("starting: root=%s data=%s", root, dataDir)
+	restoreAgentBinary(root)
 
 	if occupied(port) {
 		return fmt.Errorf(
@@ -115,6 +116,15 @@ func run() error {
 		// they run 3-12MB each. Docker Compose sets the same value for the same
 		// reason; both copies matter, because neither path reads the other's.
 		"BODY_SIZE_LIMIT=128M",
+		// The agent SDK ships claude.exe as a pinned dependency inside the app
+		// folder, and its self-updater is not aware it lives there. Updating
+		// renames the running binary to claude.exe.old.<epoch> before writing the
+		// replacement; when that second step does not land, the SDK's resolver
+		// finds nothing and every run fails with "Native CLI binary for win32-x64
+		// not found" -- pointing the user at an npm reinstall they cannot perform,
+		// on an install that has no npm. The version here is the one the build
+		// pinned and tested, so updating it in place was never wanted.
+		"DISABLE_AUTOUPDATER=1",
 	)
 	// No console to inherit, and no console for Node to pop up either.
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
@@ -317,6 +327,45 @@ func openExternal(raw string) {
 // works, and so replacing the app folder on upgrade never touches user data.
 // The layout under here (data/, logs/, webview/) is also what the uninstaller
 // offers to remove, so keep them together.
+// Put the agent SDK's claude.exe back if its self-updater left without it.
+//
+// The updater renames the running binary to claude.exe.old.<epoch> before
+// writing a replacement — the usual Windows dance, since an executing file
+// cannot be overwritten. When the second half does not land, the folder is left
+// holding only the .old copy, and every listing then fails with "Native CLI
+// binary for win32-x64 not found": an error that names an npm reinstall, on a
+// machine with no npm, for a package the user never installed. DISABLE_AUTOUPDATER
+// (see the environment above) stops this happening again, but it does nothing for
+// a copy already in that state, and those exist in the wild.
+//
+// Deliberately narrow: it acts only when claude.exe is absent and exactly one
+// candidate is present. Two candidates means an update history this cannot
+// reason about, and guessing which is the real binary is worse than reporting
+// the problem. Failure is never fatal — the server may still work via an API
+// key, which needs no CLI at all.
+func restoreAgentBinary(root string) {
+	dir := filepath.Join(root, "node_modules", "@anthropic-ai", "claude-agent-sdk-win32-x64")
+	binary := filepath.Join(dir, "claude.exe")
+
+	if _, err := os.Stat(binary); err == nil {
+		return
+	}
+
+	candidates, err := filepath.Glob(filepath.Join(dir, "claude.exe.old.*"))
+	if err != nil || len(candidates) != 1 {
+		if len(candidates) > 1 {
+			logf("claude.exe is missing and %d backups exist; leaving them alone", len(candidates))
+		}
+		return
+	}
+
+	if err := os.Rename(candidates[0], binary); err != nil {
+		logf("could not restore claude.exe from %s: %v", candidates[0], err)
+		return
+	}
+	logf("restored claude.exe from %s (interrupted self-update)", filepath.Base(candidates[0]))
+}
+
 func resolveAppRoot(root string) (string, error) {
 	if base := os.Getenv("LOCALAPPDATA"); base != "" {
 		return filepath.Join(base, appName), nil

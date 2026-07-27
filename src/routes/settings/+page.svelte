@@ -32,6 +32,81 @@
 		theme = id;
 		applyTheme(id);
 	}
+
+	/**
+	 * Subscription sign-in, driven from here rather than a terminal.
+	 *
+	 * Two round trips because the CLI behind it works that way: the first returns
+	 * a link to authorise, the second hands back the code that page gives you.
+	 * The link deliberately opens in the real browser — inside the Windows app
+	 * this is a WebView2 window with no address bar, so a sign-in rendered in
+	 * place would be a chromeless page asking for a password, which is precisely
+	 * the shape of a phishing screen and offers no way to check the URL.
+	 */
+	type SignInStep = 'idle' | 'starting' | 'awaiting-code' | 'finishing';
+	let signInStep = $state<SignInStep>('idle');
+	let signInUrl = $state('');
+	let signInCode = $state('');
+	let signInError = $state('');
+
+	async function post(action: string, extra: Record<string, string> = {}) {
+		const res = await fetch('/api/auth/login', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ action, ...extra })
+		});
+		return (await res.json()) as { ok: boolean; url?: string; error?: string };
+	}
+
+	async function beginSignIn() {
+		signInError = '';
+		signInStep = 'starting';
+		try {
+			const result = await post('start');
+			if (!result.ok || !result.url) {
+				signInError = result.error ?? 'Could not start the sign-in.';
+				signInStep = 'idle';
+				return;
+			}
+			signInUrl = result.url;
+			signInStep = 'awaiting-code';
+			window.open(signInUrl, '_blank', 'noopener');
+		} catch {
+			signInError = 'Could not reach Fleabook. Is it still running?';
+			signInStep = 'idle';
+		}
+	}
+
+	async function finishSignIn() {
+		if (!signInCode.trim()) {
+			signInError = 'Paste the code from the sign-in page first.';
+			return;
+		}
+		signInError = '';
+		signInStep = 'finishing';
+		try {
+			const result = await post('code', { code: signInCode });
+			if (!result.ok) {
+				signInError = result.error ?? 'That code was not accepted.';
+				signInStep = 'awaiting-code';
+				return;
+			}
+			// The badge is rendered from server data, so the new state only shows
+			// after a reload — and a reload is also what re-runs the CLI check.
+			location.reload();
+		} catch {
+			signInError = 'Could not reach Fleabook. Is it still running?';
+			signInStep = 'awaiting-code';
+		}
+	}
+
+	async function cancelSignIn() {
+		signInStep = 'idle';
+		signInCode = '';
+		signInUrl = '';
+		signInError = '';
+		await post('cancel').catch(() => {});
+	}
 </script>
 
 <h1>Settings</h1>
@@ -132,6 +207,61 @@
 	<span>{data.auth.summary}</span>
 </div>
 
+{#if data.auth.account}
+	<p class="muted small section-note">Signed in as {data.auth.account}.</p>
+{/if}
+
+{#if data.auth.mode === 'unknown' && !data.auth.signInUnknown}
+	<div class="signin">
+		{#if signInStep === 'idle' || signInStep === 'starting'}
+			<p class="small">
+				If you pay for Claude, sign in here and Fleabook uses your subscription — no key, nothing
+				extra to pay.
+			</p>
+			<button class="primary" type="button" onclick={beginSignIn} disabled={signInStep === 'starting'}>
+				{signInStep === 'starting' ? 'Opening…' : 'Sign in with Claude'}
+			</button>
+		{:else}
+			<p class="small">
+				A sign-in page should have opened in your browser. Approve it there, copy the code it gives
+				you, and paste it below.
+			</p>
+			<p class="muted small">
+				Nothing opened? Open this link yourself:
+				<a href={signInUrl} target="_blank" rel="noopener noreferrer">the Claude sign-in page</a>.
+			</p>
+			<div class="field">
+				<label for="signInCode">Code from the sign-in page</label>
+				<input
+					id="signInCode"
+					type="text"
+					autocomplete="off"
+					spellcheck="false"
+					bind:value={signInCode}
+					disabled={signInStep === 'finishing'}
+				/>
+			</div>
+			<div class="actions">
+				<button
+					class="primary"
+					type="button"
+					onclick={finishSignIn}
+					disabled={signInStep === 'finishing'}
+				>
+					{signInStep === 'finishing' ? 'Signing in…' : 'Finish sign-in'}
+				</button>
+				<button type="button" onclick={cancelSignIn} disabled={signInStep === 'finishing'}>
+					Cancel
+				</button>
+			</div>
+		{/if}
+
+		{#if signInError}
+			<p class="small error">{signInError}</p>
+		{/if}
+	</div>
+{/if}
+
 {#if data.auth.envKeyOverrides && data.auth.hasStoredKey}
 	<p class="muted small section-note">
 		An <code>ANTHROPIC_API_KEY</code> is set in this app's environment, so it is being used instead of
@@ -143,9 +273,9 @@
 	<div class="field">
 		<label for="apiKey">Anthropic API key (optional)</label>
 		<p class="muted small">
-			Leave this empty if you pay for Claude and have signed in with the Claude Code app — that
-			already works and costs nothing extra. Add a key here only if you don't have a subscription.
-			It is stored on this computer, in this app's database, and is sent nowhere except Anthropic.
+			Leave this empty if you pay for Claude and have signed in above — that costs nothing extra.
+			Add a key here only if you don't have a subscription. It is stored on this computer, in this
+			app's database, and is sent nowhere except Anthropic.
 		</p>
 		<input
 			id="apiKey"
@@ -327,6 +457,25 @@
 	   reads as a prompt to finish setup, not as an error. */
 	.auth.unknown {
 		border-left-color: var(--accent);
+	}
+
+	/* Sits directly under the status line it acts on, and is indented to read as
+	   belonging to it rather than as a third, competing option. */
+	.signin {
+		max-width: 620px;
+		margin: -0.75rem 0 1.25rem;
+		padding: 0.75rem;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--surface);
+	}
+
+	.signin p {
+		margin: 0 0 0.6rem;
+	}
+
+	.signin .field {
+		margin-bottom: 0.6rem;
 	}
 
 	.badge {
